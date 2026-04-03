@@ -1,1 +1,1 @@
-# SDMLab
+# EcoLab
