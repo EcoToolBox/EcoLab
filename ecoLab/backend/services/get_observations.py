@@ -1,6 +1,5 @@
 import ecoobs
 
-# SPECIES
 def get_autocomplete(speciesname:str):
     data = ecoobs.get_species_autocomplete(name=speciesname)
     if data:
@@ -45,9 +44,20 @@ def get_children(key: int, limit: int = 50, offset: int = 0):
         ]
     return []
 
+def check_gbif_key():
+    try:
+        return ecoobs.gbif_key_exists()
+    except Exception as e:
+        return {"success": False, "message": f"Key check failed: {str(e)}"}
+    
+
+def check_specieslink_key():
+    try:
+        return ecoobs.species_link_key_exists()
+    except Exception as e:
+        return {"success": False, "message": f"Key check failed: {str(e)}"}
 
 def authenticate_gbif(gbif: dict):
-    print("gbif")
     email = gbif.get("email")
     userId = gbif.get("userId")
     apiKey = gbif.get("apiKey")
@@ -62,27 +72,28 @@ def authenticate_gbif(gbif: dict):
         return {"success": False, "message": f"Authentication failed: {str(e)}"}
     
 
-def authenticate_specieslink(gbif: dict):
-    apiKey = gbif.get("apiKey")
+def authenticate_specieslink(specieslink: dict):
+    print(specieslink)
+    apiKey = specieslink.get("apiKey")
 
     if not apiKey:
         return {"error": "Missing required fields: apiKey"} 
 
     try:
-        auth_result = ecoobs.save_specieslink_apikey(apiKey=apiKey)
+        auth_result = ecoobs.save_specieslink_apikey(apikey=apiKey)
         return {"success": True, "message": "Authentication successful", "data": auth_result}
     except Exception as e:
         return {"success": False, "message": f"Authentication failed: {str(e)}"}
     
 
-async def search(occurrences: dict):
+def search(occurrences: dict):
     sources = occurrences.get("sources", [])
     gbif = "gbif" in sources
     specieslink = "specieslink" in sources
     inaturalist = "inaturalist" in sources
 
-    speciesList = occurrences.get("speciesList", [])
-    country = occurrences.get("country", "")
+    speciesList = [s.get("name") for s in occurrences.get("speciesList", [])]
+    country = occurrences.get("country", "{}")
     year = occurrences.get("year", (None, None))
     points = occurrences.get("points", [])
 
@@ -92,7 +103,7 @@ async def search(occurrences: dict):
     lng_max = points[3][1] if len(points) > 0 else None
 
     try:
-        search_result = await ecoobs.get_occurrences(
+        search_result = ecoobs.get_occurrences(
           includeSpeciesLink=specieslink,
           includeGbif=gbif,
           includeInaturalist=inaturalist,
@@ -100,10 +111,13 @@ async def search(occurrences: dict):
           country=country,
           year_range=year,
           lat_min=lat_min,
-          lng_min=lng_min,
+          lon_min=lng_min,
           lat_max=lat_max,
-          lng_max=lng_max
+          lon_max=lng_max
         )
-        return {"success": True, "message": "Search successful", "data": search_result}
+
+        search_result = search_result[(search_result['longitude'] != 0) & (search_result['latitude'] != 0)].reset_index(drop=True)
+
+        return search_result.convert_dtypes().to_dict(orient="records")
     except Exception as e:
         return {"success": False, "message": f"Search failed: {str(e)}"}
