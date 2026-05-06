@@ -1,0 +1,31 @@
+
+const GLOBI_INTERACTIONS = [
+  { value: "eats", label: "Eats (consumidor → alimento)" },
+  { value: "eatenBy", label: "É comido por (alimento → consumidor)" },
+  { value: "preysOn", label: "Preda (predador → presa)" },
+  { value: "preyedUponBy", label: "É predado por (presa → predador)" },
+  { value: "kills", label: "Mata (agente → vítima)" },
+  { value: "killedBy", label: "É morto por (vítima → agente)" },
+  { value: "parasiteOf", label: "Parasita (parasita → hospedeiro)" },
+  { value: "hasParasite", label: "Tem parasita (hospedeiro → parasita)" },
+  { value: "endoparasiteOf", label: "Endoparasita (endoparasita → hospedeiro)" },
+  { value: "ectoparasiteOf", label: "Ectoparasita (ectoparasita → hospedeiro)" },
+  { value: "parasitoidOf", label: "Parasitoide (parasitoide → hospedeiro)" },
+  { value: "hostOf", label: "Hospedeiro de (hospedeiro → simbionte)" },
+  { value: "hasHost", label: "Tem hospedeiro (simbionte → hospedeiro)" },
+  { value: "pollinates", label: "Poliniza (polinizador → planta)" },
+  { value: "pollinatedBy", label: "É polinizado por (planta → polinizador)" },
+  { value: "pathogenOf", label: "Patógeno de (patógeno → hospedeiro)" },
+  { value: "hasPathogen", label: "Tem patógeno (hospedeiro → patógeno)" },
+  { value: "vectorOf", label: "Vetor de (vetor → patógeno)" },
+  { value: "hasVector", label: "Tem vetor (patógeno → vetor)" },
+  { value: "dispersalVectorOf", label: "Vetor de dispersão (vetor → semente)" },
+  { value: "symbiontOf", label: "Simbionte de" },
+  { value: "mutualistOf", label: "Mutualista de" },
+  { value: "commensalistOf", label: "Comensal de" },
+  { value: "competitorOf", label: "Competidor de" },
+  { value: "visits", label: "Visita (ex: polinizadores visitando flores)" },
+  { value: "visitsFlowersOf", label: "Visita flores de" },
+];
+
+export default GLOBI_INTERACTIONS;

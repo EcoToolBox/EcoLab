@@ -21,18 +21,21 @@ const BACK_BTN_SX = {
 /**
  * Renders Back / Next navigation buttons for the wizard flow.
  *
- * @param {boolean} disableNext  - disables the Next button (e.g. validation not met)
- * @param {string}  disableHint  - tooltip shown when Next is disabled
+ * @param {boolean} disableNext  – disables the Next button
+ * @param {string}  disableHint  – tooltip shown when Next is disabled
+ * @param {Array}   selectedSpecies – persisted to localStorage on Next
  */
-export default function StepActions({ disableNext = false, disableHint = "", selectedSpecies}) {
+export default function StepActions({
+  disableNext = false,
+  disableHint = "",
+  selectedSpecies,
+}) {
   const { goNext, goBack, isFirst, isLast } = useStepNavigation();
 
-    const handleNext = () => {
-    localStorage.setItem(
-      "Selected Species",
-      JSON.stringify(selectedSpecies)
-    );
-
+  const handleNext = () => {
+    if (selectedSpecies) {
+      localStorage.setItem("Selected Species", JSON.stringify(selectedSpecies));
+    }
     goNext();
   };
 

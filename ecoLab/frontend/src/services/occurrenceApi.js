@@ -6,26 +6,46 @@ async function handleResponse(res) {
 }
 
 const occurrenceApi = {
+  checkIfKeyExists: (source) => {
+    if (source === "gbif") {
+      return fetch(`${API_BASE}/occurrence/gbif/check-key`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+        .then(handleResponse)
+        .then((data) => data.msg ?? data.results ?? data);
+    } else if (source === "specieslink") {
+      return fetch(`${API_BASE}/occurrence/specieslink/check-key`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+        .then(handleResponse)
+        .then((data) => data.msg ?? data.results ?? data);
+    }
+  },
+
    authenticateGbif: (gbif) =>
-        fetch(`${API_BASE}/ocurrence/gbif/authenticate`, {
+        fetch(`${API_BASE}/occurrence/gbif/authenticate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({gbif}),
+          body: JSON.stringify(gbif),
         })
           .then(handleResponse)
           .then((data) => data.msg ?? data.results ?? data),
 
     authenticateSpeciesLink: (speciesLink) =>
-        fetch(`${API_BASE}/ocurrence/specieslink/authenticate`, {
+        fetch(`${API_BASE}/occurrence/specieslink/authenticate`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-            ApiKey: speciesLink.apiKey,
-        }),
+        body: JSON.stringify(speciesLink),
         })
         .then(handleResponse)
         .then((data) => data.msg ?? data.results ?? data),
@@ -37,11 +57,11 @@ const occurrenceApi = {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            sources,
-            speciesList,
-            country,
-            year,
-            points
+            sources: sources,
+            speciesList: speciesList,
+            country: country.label,
+            year: year,
+            points: points
           }),
         })
       .then(handleResponse)

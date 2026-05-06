@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { STEPS } from "../App";
+import { STEPS } from "../constants/steps";
 
 /**
  * Returns helpers to navigate between wizard steps.
