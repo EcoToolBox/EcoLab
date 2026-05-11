@@ -4,7 +4,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
-from metrics import calculate_boyce, calculate_tss
+from .metrics import calculate_boyce, calculate_tss
 
 
 def run(df: pd.DataFrame, feature_cols: list[str], selected_metrics: list[str] = []) -> dict:

@@ -1,6 +1,6 @@
 
 const GLOBI_INTERACTIONS = [
-  { value: "eats", label: "Eats (consumidor → alimento)" },
+  { value: "eats", label: "Come (consumidor → alimento)" },
   { value: "eatenBy", label: "É comido por (alimento → consumidor)" },
   { value: "preysOn", label: "Preda (predador → presa)" },
   { value: "preyedUponBy", label: "É predado por (presa → predador)" },
