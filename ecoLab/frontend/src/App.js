@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import MainLayout from "./layout/MainLayout";
 import SpeciesSearch from "./pages/SpeciesSearch";
 import Occurrences from "./pages/Occurrences";
@@ -22,6 +22,7 @@ L.Icon.Default.mergeOptions({ iconUrl: markerIcon, shadowUrl: markerShadow });
 // All questionnaires first, then data-fetching screens.
 
 export default function App() {
+
   const currentYear = new Date().getFullYear();
 
   // ── Species ──

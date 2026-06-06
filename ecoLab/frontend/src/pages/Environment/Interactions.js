@@ -4,6 +4,7 @@ import {
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { useState, useEffect } from "react";
+import DownloadIcon from "@mui/icons-material/Download";
 import StepActions from "../../components/StepActions";
 import LoadingOverlay from "../../components/LoadingOverlay";
 import interactionApi from "../../services/interactionApi";
@@ -16,9 +17,42 @@ const LOADING_MESSAGES = [
   "Quase lá! Montando os resultados...",
 ];
 
+function exportToCSV(rows, filename) {
+  if (!rows.length) return;
+  const keys = Object.keys(rows[0]).filter((k) => k !== "id");
+  const header = keys.join(",");
+  const body = rows.map((row) =>
+    keys.map((k) => {
+      const val = row[k] ?? "";
+      return typeof val === "string" && (val.includes(",") || val.includes('"'))
+        ? `"${val.replace(/"/g, '""')}"`
+        : val;
+    }).join(",")
+  );
+  const csv = [header, ...body].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── Config-only view (questionnaire step) ────────────────────────────────────
 function InteractionsConfig({ selectedSpecies, interactionConfig, setInteractionConfig }) {
   const { selectedInteractions, depth, skip } = interactionConfig;
+
+  const allValues = GLOBI_INTERACTIONS.map((i) => i.value);
+  const allSelected = allValues.every((v) => selectedInteractions.includes(v));
+  const someSelected = allValues.some((v) => selectedInteractions.includes(v)) && !allSelected;
+
+  const handleSelectAll = (checked) => {
+    setInteractionConfig((prev) => ({
+      ...prev,
+      selectedInteractions: checked ? allValues : [],
+    }));
+  };
 
   const handleInteractionChange = (event) => {
     const { name, checked } = event.target;
@@ -64,6 +98,23 @@ function InteractionsConfig({ selectedSpecies, interactionConfig, setInteraction
 
       {!skip && (
         <>
+          {/* Selecionar todos */}
+          <FormControlLabel
+            sx={{ mb: 1 }}
+            control={
+              <Checkbox
+                checked={allSelected}
+                indeterminate={someSelected}
+                onChange={(e) => handleSelectAll(e.target.checked)}
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{ color: "#333", fontWeight: 600 }}>
+                Selecionar todas as interações
+              </Typography>
+            }
+          />
+
           <FormGroup sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.5, mb: 3 }}>
             {GLOBI_INTERACTIONS.map((interaction) => (
               <FormControlLabel
@@ -115,10 +166,10 @@ function InteractionsConfig({ selectedSpecies, interactionConfig, setInteraction
 
 // ─── Data-fetching view (results step — called from EnvResult) ────────────────
 export function InteractionsFetch({ selectedSpecies, interactionConfig, setInteractionData }) {
-  const [loading, setLoading]       = useState(false);
-  const [done, setDone]             = useState(false);
-  const [rows, setRows]             = useState([]);
-  const [error, setError]           = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone]       = useState(false);
+  const [rows, setRows]       = useState([]);
+  const [error, setError]     = useState(null);
 
   useEffect(() => {
     if (interactionConfig.skip) {
@@ -147,7 +198,7 @@ export function InteractionsFetch({ selectedSpecies, interactionConfig, setInter
         setError(err.message ?? "Erro desconhecido");
       })
       .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) return <LoadingOverlay messages={LOADING_MESSAGES} />;
@@ -167,11 +218,23 @@ export function InteractionsFetch({ selectedSpecies, interactionConfig, setInter
     .map((k) => ({ field: k, headerName: k, flex: 1, minWidth: 150 }));
 
   return (
-    <Box sx={{ height: 400, width: "100%", mb: 2 }}>
-      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
-        Interações encontradas ({rows.length} registros)
-      </Typography>
-      <DataGrid rows={rows} columns={columns} />
+    <Box sx={{ mb: 2 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+        <Typography variant="subtitle2" fontWeight={600}>
+          Interações encontradas ({rows.length} registros)
+        </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<DownloadIcon />}
+          onClick={() => exportToCSV(rows, "interacoes.csv")}
+        >
+          Exportar CSV
+        </Button>
+      </Box>
+      <Box sx={{ height: 400, width: "100%" }}>
+        <DataGrid rows={rows} columns={columns} />
+      </Box>
     </Box>
   );
 }

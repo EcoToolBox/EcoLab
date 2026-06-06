@@ -10,9 +10,17 @@ app = FastAPI()
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
 os.makedirs("maps", exist_ok=True)
 app.mount("/maps", StaticFiles(directory="maps"), name="maps")
+import os
+
+@app.get("/api/config")
+def get_config():
+    return {"port": int(os.environ.get("APP_PORT", 8000))}
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,10 +29,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-@app.get("/api")
-def get():
-    return {"msg": "Hello World"}
-
 # SPECIES
 @app.get("/api/autocomplete/")
 def get_autocomplete(species_name:str):

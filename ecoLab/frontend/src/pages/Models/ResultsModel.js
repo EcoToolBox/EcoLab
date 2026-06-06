@@ -1,16 +1,32 @@
 import {
   Box, Typography, Alert, Grid, Divider, Accordion,
-  AccordionSummary, AccordionDetails, Chip,
+  AccordionSummary, AccordionDetails, Chip, Button,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, LinearProgress,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import DownloadIcon from "@mui/icons-material/Download";
 import { useEffect, useState, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import StepActions from "../../components/StepActions";
 import LoadingOverlay from "../../components/LoadingOverlay";
 import modelApi from "../../services/modelApi";
 
-const API_BASE = "http://localhost:8000";
+
+let BASE_URL = "http://localhost:8000";
+
+export async function initConfig() {
+    try {
+        const res = await fetch("/api/config");
+        const data = await res.json();
+        BASE_URL = `http://localhost:${data.port}`;
+    } catch (e) {
+        console.warn("Usando porta padrão 8000");
+    }
+}
+
+export function getBaseURL() {
+    return BASE_URL;
+}
 
 const MODEL_LABELS = {
   maxent: "MaxEnt",
@@ -94,6 +110,28 @@ function MetricsChart({ metrics }) {
   );
 }
 
+function exportToCSV(rows, filename) {
+  if (!rows.length) return;
+  const keys = Object.keys(rows[0]);
+  const header = keys.join(",");
+  const body = rows.map((row) =>
+    keys.map((k) => {
+      const val = row[k] ?? "";
+      return typeof val === "string" && (val.includes(",") || val.includes('"'))
+        ? `"${val.replace(/"/g, '""')}"`
+        : val;
+    }).join(",")
+  );
+  const csv = [header, ...body].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function VariableImportanceTable({ variableImportance }) {
   if (!variableImportance || !Object.keys(variableImportance).length) return null;
 
@@ -106,10 +144,18 @@ function VariableImportanceTable({ variableImportance }) {
 
   return (
     <Box sx={{ mt: 2, border: "1px solid #ddd", borderRadius: 2, overflow: "hidden" }}>
-      <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid #ddd", backgroundColor: "#f9f9f9" }}>
+      <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid #ddd", backgroundColor: "#f9f9f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Typography variant="subtitle2" fontWeight={600}>
           Importância das Variáveis
         </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<DownloadIcon />}
+          onClick={() => exportToCSV(sorted, "importancia_variaveis.csv")}
+        >
+          Exportar CSV
+        </Button>
       </Box>
       <TableContainer>
         <Table size="small">
@@ -219,7 +265,7 @@ function ModelAccordion({ model, modelData, index }) {
             {path ? (
               <Box
                 component="img"
-                src={`${API_BASE}/${path.replace(/\\/g, "/")}`}
+                src={`${getBaseURL()}/${path.replace(/\\/g, "/")}`}
                 alt={`Mapa ${label}`}
                 sx={{
                   width: "100%",

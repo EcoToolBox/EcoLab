@@ -6,6 +6,12 @@ import { useEffect, useState } from "react";
 import StepActions from "../../components/StepActions";
 import environmentApi from "../../services/environmentApi";
 
+const ENV_VARS = [
+  { name: "ndvi",          label: "NDVI (Índice de Vegetação por Diferença Normalizada)" },
+  { name: "ndwi",          label: "NDWI (Índice de Água por Diferença Normalizada)" },
+  { name: "temperature",   label: "Temperatura" },
+  { name: "precipitation", label: "Precipitação" },
+];
 const GEE_VARS = ["ndvi", "ndwi", "temperature", "precipitation"];
 const GEE_PROJECT_CACHE_KEY = "geeProject";
 
@@ -20,11 +26,10 @@ export default function Environment({
   const [authLoading,   setAuthLoading]   = useState(false);
   const [authError,     setAuthError]     = useState(null);
 
-  // Carrega projeto salvo em cache
   useEffect(() => {
     const cached = localStorage.getItem(GEE_PROJECT_CACHE_KEY);
     if (cached && !geeProject) setGeeProject(cached);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -62,6 +67,15 @@ export default function Environment({
     setAuthError(null);
   };
 
+  // Select all
+  const allVarNames = ENV_VARS.map((v) => v.name);
+  const allSelected = allVarNames.every((v) => selectedEnv.includes(v));
+  const someSelected = allVarNames.some((v) => selectedEnv.includes(v)) && !allSelected;
+
+  const handleSelectAll = (checked) => {
+    setSelectedEnv(checked ? [...allVarNames] : []);
+  };
+
   const needsEE    = selectedEnv.some((e) => GEE_VARS.includes(e));
   const hasSelection = selectedEnv.length > 0;
   const canProceed = hasSelection && (!needsEE || authenticated);
@@ -76,13 +90,25 @@ export default function Environment({
         A busca será executada automaticamente na etapa de coleta de dados.
       </Typography>
 
+      {/* Selecionar todas */}
+      <FormControlLabel
+        sx={{ mb: 0.5 }}
+        control={
+          <Checkbox
+            checked={allSelected}
+            indeterminate={someSelected}
+            onChange={(e) => handleSelectAll(e.target.checked)}
+          />
+        }
+        label={
+          <Typography variant="body2" sx={{ fontWeight: 600, color: "#333" }}>
+            Selecionar todas
+          </Typography>
+        }
+      />
+
       <FormGroup style={{ color: "#333" }}>
-        {[
-          { name: "ndvi",          label: "NDVI (Índice de Vegetação por Diferença Normalizada)" },
-          { name: "ndwi",          label: "NDWI (Índice de Água por Diferença Normalizada)" },
-          { name: "temperature",   label: "Temperatura" },
-          { name: "precipitation", label: "Precipitação" },
-        ].map(({ name, label }) => (
+        {ENV_VARS.map(({ name, label }) => (
           <FormControlLabel
             key={name}
             control={

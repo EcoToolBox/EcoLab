@@ -1,6 +1,7 @@
-import { Box, Typography, Alert } from "@mui/material";
+import { Box, Typography, Alert, Button } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { useEffect, useState, useRef } from "react";
+import DownloadIcon from "@mui/icons-material/Download";
 import StepActions from "../../components/StepActions";
 import LoadingOverlay from "../../components/LoadingOverlay";
 import occurrenceApi from "../../services/occurrenceApi";
@@ -18,6 +19,28 @@ function withId(data) {
   return data.map((row, i) => ({ id: i, ...row }));
 }
 
+function exportToCSV(rows, filename) {
+  if (!rows.length) return;
+  const keys = Object.keys(rows[0]).filter((k) => k !== "id");
+  const header = keys.join(",");
+  const body = rows.map((row) =>
+    keys.map((k) => {
+      const val = row[k] ?? "";
+      return typeof val === "string" && (val.includes(",") || val.includes('"'))
+        ? `"${val.replace(/"/g, '""')}"`
+        : val;
+    }).join(",")
+  );
+  const csv = [header, ...body].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function OccurrenceResults({
   selectedSpecies,
   selectedSources,
@@ -32,11 +55,9 @@ export default function OccurrenceResults({
   const hasFetched = useRef(false);
 
   useEffect(() => {
-    // If we already have data (navigating back), skip refetch
     if (occurrenceData.length > 0) return;
     if (hasFetched.current) return;
     hasFetched.current = true;
-
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -45,7 +66,6 @@ export default function OccurrenceResults({
     setLoading(true);
     setError(null);
     try {
-      // Authenticate sources that need credentials
       const authPromises = [];
       if (selectedSources.includes("gbif") && !sourceConfig.gbif.alreadyExists) {
         authPromises.push(
@@ -119,15 +139,27 @@ export default function OccurrenceResults({
 
   return (
     <Box>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" fontWeight={600} gutterBottom color="#555">
-          Ocorrências Encontradas
-        </Typography>
-        <Typography variant="body2" sx={{ color: "#333" }}>
-          {occurrenceData.length > 0
-            ? `${occurrenceData.length} registros encontrados para ${selectedSpecies.length} espécie(s).`
-            : `Nenhuma ocorrência encontrada para os filtros selecionados.`}
-        </Typography>
+      <Box sx={{ mb: 3, display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
+        <Box>
+          <Typography variant="h5" fontWeight={600} gutterBottom color="#555">
+            Ocorrências Encontradas
+          </Typography>
+          <Typography variant="body2" sx={{ color: "#333" }}>
+            {occurrenceData.length > 0
+              ? `${occurrenceData.length} registros encontrados para ${selectedSpecies.length} espécie(s).`
+              : `Nenhuma ocorrência encontrada para os filtros selecionados.`}
+          </Typography>
+        </Box>
+        {occurrenceData.length > 0 && (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<DownloadIcon />}
+            onClick={() => exportToCSV(occurrenceData, "ocorrencias.csv")}
+          >
+            Exportar CSV
+          </Button>
+        )}
       </Box>
 
       {occurrenceData.length === 0 ? (

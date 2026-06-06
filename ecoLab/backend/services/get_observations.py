@@ -116,7 +116,7 @@ def search(occurrences: dict):
           lon_max=lng_max
         )
 
-        search_result = search_result[(search_result['longitude'] != 0) & (search_result['latitude'] != 0)].reset_index(drop=True)
+        #search_result = search_result[(search_result['longitude'] != 0) & (search_result['latitude'] != 0)].reset_index(drop=True)
 
         return search_result.convert_dtypes().to_dict(orient="records")
     except Exception as e:

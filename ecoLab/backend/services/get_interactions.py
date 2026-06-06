@@ -89,7 +89,6 @@ def add_interaction_occurrence(interactions: dict, use_year: bool = True):
         year_max = max(years)
 
     all_interactor_species = list(interactor_map.keys())
-    print(f"Buscando {len(all_interactor_species)} espécies interatoras...")
 
     try:
         all_occ_df = ecoobs.get_occurrences(
@@ -156,6 +155,8 @@ def add_interaction_occurrence(interactions: dict, use_year: bool = True):
         valid = sum(v for v in presences if v is not None)
         nas = sum(v is None for v in presences)
         print(f"{col_name}: {valid} presenças ({nas} linhas N/A - espécie não relacionada)")
+        
         occurrences_df[col_name] = presences
-
-    return occurrences_df.convert_dtypes().to_dict(orient="records")
+    print(occurrences_df)
+    result = occurrences_df.convert_dtypes().to_dict(orient="records")
+    return result

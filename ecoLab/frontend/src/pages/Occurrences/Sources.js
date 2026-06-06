@@ -7,6 +7,7 @@ import Checkbox from '@mui/material/Checkbox';
 import PopupsMsg from "./PopUp";
 import occurrenceApi from "../../services/occurrenceApi";
 
+const ALL_SOURCES = ["gbif", "inaturalist", "specieslink"];
 
 export default function SourcesCheckBox({selectedSources, setSelectedSources, sourceConfig, setSourceConfig}) {
     const [showPassword, setShowPassword] = useState(false);
@@ -53,12 +54,36 @@ export default function SourcesCheckBox({selectedSources, setSelectedSources, so
         );
     };
 
+    const allSelected = ALL_SOURCES.every((s) => selectedSources.includes(s));
+    const someSelected = ALL_SOURCES.some((s) => selectedSources.includes(s)) && !allSelected;
+
+    const handleSelectAll = (checked) => {
+        setSelectedSources(checked ? [...ALL_SOURCES] : []);
+    };
+
     return (
         <Box>
             <FormGroup label="Fontes de Dados" style={{ color: "#333" }}>
                 <Typography gutterBottom style={{ fontWeight: 600 }}>
                     Selecione as fontes de dados
                 </Typography>
+
+                {/* Selecionar todas */}
+                <FormControlLabel
+                    sx={{ mb: 0.5 }}
+                    control={
+                        <Checkbox
+                            checked={allSelected}
+                            indeterminate={someSelected}
+                            onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                    }
+                    label={
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: "#333" }}>
+                            Selecionar todas
+                        </Typography>
+                    }
+                />
 
                 {/* GBIF */}
                 <FormControlLabel

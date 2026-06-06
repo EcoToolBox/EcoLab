@@ -34,6 +34,7 @@ def get_environment(env_variables: dict):
     ndwi = "ndwi" in index
 
     gdf = json_to_geodataframe(data, lat_col="latitude", lon_col="longitude")
+    print(f"Entrada {len(gdf)}")
     try:
         result = ecoenv.get_environment_data(
             gdf = gdf,
@@ -44,7 +45,7 @@ def get_environment(env_variables: dict):
         )
         cols_to_drop = ["geometry"]
         result = result.drop(columns=[c for c in cols_to_drop if c in result.columns])
-        print(result)
+        print(f"Após função {len(result)}")
         result = result.replace([np.nan, np.inf, -np.inf], None)
         return {"msg": result.to_dict(orient="records")}
     except Exception as e:

@@ -62,7 +62,7 @@ def run_models(models: dict):
             except Exception as e:
                 print(f"  Erro ao rodar {model}: {e}")
 
-        maps = create_model_maps.generate_model_maps(results, data_with_absences, country)
+        maps = create_model_maps.generate_model_maps(results, data_with_absences, country, species_name=selected_species_names)
         return maps
 
     species_col = None

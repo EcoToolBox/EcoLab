@@ -109,7 +109,7 @@ def generate_model_maps(results: dict, total: pd.DataFrame, country: str, output
 
             plt.tight_layout()
 
-            fname = f"mapa_{model_name}_{species_name}.png" if species_name else f"mapa_{model_name}.png"
+            fname = f"mapa_{model_name}_{species_name}.png" if species_name else f"mapa_{model_name}_species.png"
             path  = os.path.join(output_dir, fname)
             plt.savefig(path, dpi=150, bbox_inches="tight")
             plt.close(fig)

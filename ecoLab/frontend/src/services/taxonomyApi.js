@@ -1,5 +1,19 @@
-const API_BASE = "http://127.0.0.1:8000/api";
 
+let BASE_URL = "http://localhost:8000";
+
+export async function initConfig() {
+    try {
+        const res = await fetch("/api/config");
+        const data = await res.json();
+        BASE_URL = `http://localhost:${data.port}`;
+    } catch (e) {
+        console.warn("Usando porta padrão 8000");
+    }
+}
+
+export function getBaseURL() {
+    return BASE_URL+"/api";
+}
 async function handleResponse(res) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -7,14 +21,14 @@ async function handleResponse(res) {
 
 const taxonomyApi = {
   getRoots: () =>
-    fetch(`${API_BASE}/taxonomy/roots`).then(handleResponse).then(data => data.msg),
+    fetch(`${getBaseURL()}/taxonomy/roots`).then(handleResponse).then(data => data.msg),
 
   getChildren: (key, limit = 1500, offset = 0) =>
-    fetch(`${API_BASE}/taxonomy/${key}/children?limit=${limit}&offset=${offset}`).then(handleResponse)
+    fetch(`${getBaseURL()}/taxonomy/${key}/children?limit=${limit}&offset=${offset}`).then(handleResponse)
     .then(data => data.msg ?? data.results ?? data),
 
   autocomplete: (speciesName) =>
-    fetch(`${API_BASE}/autocomplete/?species_name=${encodeURIComponent(speciesName)}`)
+    fetch(`${getBaseURL()}/autocomplete/?species_name=${encodeURIComponent(speciesName)}`)
       .then(handleResponse)
       .then((data) => data.msg ?? []),
 };

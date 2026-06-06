@@ -1,4 +1,18 @@
-const API_BASE = "http://127.0.0.1:8000/api";
+let BASE_URL = "http://localhost:8000"; // fallback dev
+
+export async function initConfig() {
+    try {
+        const res = await fetch("/api/config");
+        const data = await res.json();
+        BASE_URL = `http://localhost:${data.port}`;
+    } catch (e) {
+        console.warn("Usando porta padrão 8000");
+    }
+}
+
+export function getBaseURL() {
+    return BASE_URL + "/api";
+}
 
 async function handleResponse(res) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -8,7 +22,7 @@ async function handleResponse(res) {
 const occurrenceApi = {
   checkIfKeyExists: (source) => {
     if (source === "gbif") {
-      return fetch(`${API_BASE}/occurrence/gbif/check-key`, {
+      return fetch(`${getBaseURL()}/occurrence/gbif/check-key`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -17,7 +31,7 @@ const occurrenceApi = {
         .then(handleResponse)
         .then((data) => data.msg ?? data.results ?? data);
     } else if (source === "specieslink") {
-      return fetch(`${API_BASE}/occurrence/specieslink/check-key`, {
+      return fetch(`${getBaseURL()}/occurrence/specieslink/check-key`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -29,7 +43,7 @@ const occurrenceApi = {
   },
 
    authenticateGbif: (gbif) =>
-        fetch(`${API_BASE}/occurrence/gbif/authenticate`, {
+        fetch(`${getBaseURL()}/occurrence/gbif/authenticate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -40,7 +54,7 @@ const occurrenceApi = {
           .then((data) => data.msg ?? data.results ?? data),
 
     authenticateSpeciesLink: (speciesLink) =>
-        fetch(`${API_BASE}/occurrence/specieslink/authenticate`, {
+        fetch(`${getBaseURL()}/occurrence/specieslink/authenticate`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -51,7 +65,7 @@ const occurrenceApi = {
         .then((data) => data.msg ?? data.results ?? data),
   
     getOccurrences: async (sources, speciesList, country, year, points) =>
-       await fetch(`${API_BASE}/occurrence/search`, {
+       await fetch(`${getBaseURL()}/occurrence/search`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
