@@ -7,6 +7,7 @@ hiddenimports = []
 
 # ── Dados estáticos da aplicação ──────────────────────────────────────────────
 datas += [
+    ('ecoLab/backend', 'ecoLab/backend'),
     ('ecoLab/frontend/build', 'ecoLab/frontend/build'),
     ('ecoLab/maps', 'ecoLab/maps'),
 ]
@@ -36,10 +37,17 @@ try:
 except Exception:
     pass
 
+# ── ecoLab package ────────────────────────────────────────────────────────────
+tmp = collect_all('ecoLab')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
 # ── hidden imports ────────────────────────────────────────────────────────────
 hiddenimports += [
+    'ecoLab',
+    'ecoLab.backend',
     'ecoLab.backend.main',
     'ecoLab.backend.services',
+    *collect_submodules('ecoLab'),
     *collect_submodules('pyinaturalist'),
     *collect_submodules('pyogrio'),
     *collect_submodules('geopandas'),
@@ -49,7 +57,7 @@ hiddenimports += [
 ]
 
 a = Analysis(
-    ['scripts/run_exe.py'],  # Linux usa / em vez de \\
+    ['scripts/run_exe.py'],
     pathex=['.'],
     binaries=binaries,
     datas=datas,
@@ -74,7 +82,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,  # UPX desativado no Linux por problemas de compatibilidade
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,

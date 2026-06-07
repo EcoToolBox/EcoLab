@@ -7,6 +7,7 @@ hiddenimports = []
 
 # ── Dados estáticos da aplicação ──────────────────────────────────────────────
 datas += [
+    ('ecoLab/backend', 'ecoLab/backend'),
     ('ecoLab/frontend/build', 'ecoLab/frontend/build'),
     ('ecoLab/maps', 'ecoLab/maps'),
 ]
@@ -44,6 +45,7 @@ except Exception:
 hiddenimports += [
     'ecoLab.backend.main',
     'ecoLab.backend.services',
+    *collect_submodules('ecoLab'),
     *collect_submodules('pyinaturalist'),
     *collect_submodules('pyogrio'),
     *collect_submodules('geopandas'),
