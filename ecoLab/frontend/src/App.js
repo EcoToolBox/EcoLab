@@ -142,6 +142,7 @@ export default function App() {
             element={
               <EnvResult
                 selectedSpecies={selectedSpecies}
+                selectedSources={selectedSources}
                 occurrenceData={occurrenceData}
                 setOccurrenceData={setOccurrenceData}
                 interactionConfig={interactionConfig}

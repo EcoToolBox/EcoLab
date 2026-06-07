@@ -53,10 +53,10 @@ export default function PlaceCountryOrMap({ value, setValue }) {
 
   return (
     <Box>
-      <Typography sx={{ fontWeight: 600, mb: 2 }}>
+{/*      <Typography sx={{ fontWeight: 600, mb: 2 }}>
         Localização
       </Typography>
-
+ 
       <ToggleButtonGroup
         value={value.type}
         exclusive
@@ -65,9 +65,11 @@ export default function PlaceCountryOrMap({ value, setValue }) {
         fullWidth
       >
         <ToggleButton value="country">País</ToggleButton>
-        <ToggleButton value="map">Mapa</ToggleButton>
-      </ToggleButtonGroup>
-
+       <ToggleButton value="map">Mapa</ToggleButton> 
+      </ToggleButtonGroup> */}
+       <Typography gutterBottom sx={{ color: "#333", fontWeight: 600 }}>
+         País
+        </Typography>
       {value.type === "country" && (
         <Autocomplete
             options={options}
@@ -87,6 +89,7 @@ export default function PlaceCountryOrMap({ value, setValue }) {
                 <TextField
                 {...params}
                 label="Buscar país"
+                placeholder="Busque o nome do país em inglês"
                 Input={{
                     ...params.InputProps,
                     endAdornment: (
@@ -101,9 +104,9 @@ export default function PlaceCountryOrMap({ value, setValue }) {
             />
       )}
 
-      {value.type === "map" && (
+      {/* {value.type === "map" && (
         <MapSelector value={value} setValue={setValue} />
-      )}
+      )} */}
     </Box>
   );
 }

@@ -67,6 +67,7 @@ function exportToCSV(rows, filename) {
 
 export default function EnvResult({
   selectedSpecies,
+  selectedSources,
   occurrenceData,
   setOccurrenceData,
   interactionConfig,
@@ -117,6 +118,7 @@ export default function EnvResult({
           occurrence: enrichedOccurrences,
           interactions: fetchedInteractions,
           selectedSpecies,
+          selectedSources
         });
         const final = withId(parseResult(result));
         setFinalData(final);

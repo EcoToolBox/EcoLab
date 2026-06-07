@@ -24,14 +24,7 @@ def run_models(models: dict):
 
     if not selected_models:
         return results
-
-    if presence_type == "presence_only":
-        finalData["presence"] = 1
-        not_features = ["eventDate", "latitude", "longitude", "geometry", "presence", "year"]
-        features = [col for col in finalData.columns if col not in not_features]
-        results["maxent"] = maxent.run(finalData, features)
-        return results
-
+    
     backgroundData = create_grid.generate_prediction_grid(
         geeProject, country, points,
         interactionData,
@@ -40,13 +33,34 @@ def run_models(models: dict):
     )
     backgroundData = backgroundData.drop(columns=[c for c in ["geometry"] if c in backgroundData.columns])
 
+    
+    
     not_features = {"eventDate", "latitude", "longitude", "geometry", "presence", "year",
                     'id', 'country', 'day', 'month', 'scientificName', 'source'}
+                                    
+    if presence_type == "presence_only":
+        finalData["presence"] = 1
+        features = [col for col in finalData.columns if col not in not_features]
 
+        # Monta background com presence=0 usando o grid do país
+        background_sample = backgroundData[features].copy()
+        background_sample["presence"] = 0
+
+        # Combina presença real + background sintético
+        presence_only_df = pd.concat(
+            [finalData[features + ["presence"]], background_sample],
+            ignore_index=True
+        )
+        results["maxent"] = maxent.run(presence_only_df, features, selected_metrics)
+        maps = create_model_maps.generate_model_maps(
+            results, backgroundData, country, species_name=selected_species_names
+        )
+        return maps
+        
     if len(selected_species_names) <= 1:
+        
         data_with_absences = create_absence.build_presence_dataframe(backgroundData, finalData)
         features = [col for col in data_with_absences.columns if col not in not_features]
-
         for model in selected_models:
             try:
                 if model == "gam":

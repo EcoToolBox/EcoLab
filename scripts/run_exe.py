@@ -8,6 +8,22 @@ import webbrowser
 import time
 import socket
 
+import requests_cache
+import sys
+import os
+
+def get_cache_dir():
+    base = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.getcwd()
+    path = os.path.join(base, "cache")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+http_session = requests_cache.CachedSession(
+    cache_name=os.path.join(get_cache_dir(), "http_cache"),
+    backend="sqlite",
+    expire_after=60 * 60 * 24 * 7,
+)
+
 def get_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))
@@ -42,5 +58,13 @@ def open_browser():
     webbrowser.open("http://localhost:8000")
 
 if __name__ == "__main__":
-    threading.Timer(1.5, open_browser).start()
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_config=None)
+    try:
+        port = 8000
+        threading.Timer(1.5, open_browser).start()
+        uvicorn.run(app, host="127.0.0.1", port=port, log_level="debug")
+    except Exception as e:
+        print(f"\nERRO: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        input("\nPressione Enter para fechar...")

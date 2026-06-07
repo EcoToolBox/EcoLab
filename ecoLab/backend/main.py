@@ -121,8 +121,6 @@ async def search_interactions_occurrences(interactions: dict):
     result = get_interactions.add_interaction_occurrence(interactions)
     return {"msg": result}
 
-
-
 #models
 @app.post("/api/models")
 async def run_models(models: dict):
