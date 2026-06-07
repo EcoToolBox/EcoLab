@@ -103,7 +103,11 @@ jobs:
         with:
           name: EcoLab-Linux
           path: artifacts/linux
-
+      - name: Rename artifacts
+        run: |
+          mv artifacts/windows/EcoLab.exe artifacts/windows/EcoLab-Windows.exe
+          mv artifacts/linux/EcoLab artifacts/linux/EcoLab-Linux
+          
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -111,6 +115,6 @@ jobs:
           name: "Latest Build"
           prerelease: true
           files: |
-            artifacts/windows/EcoLab_windows.exe
-            artifacts/linux/EcoLab_linux
-          generate_release_notes: true    
+            artifacts/windows/EcoLab-Windows.exe
+            artifacts/linux/EcoLab-Linux
+          generate_release_notes: true 
