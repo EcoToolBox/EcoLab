@@ -19,6 +19,64 @@ datas += copy_metadata('geopandas')
 
 tmp = collect_all('fastapi')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+# ── numpy ────────────────────────────────────────────────────────────────────
+tmp = collect_all('numpy')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('numpy')
+
+# ── scipy ────────────────────────────────────────────────────────────────────
+tmp = collect_all('scipy')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('scipy')
+
+# ── scikit-learn ─────────────────────────────────────────────────────────────
+tmp = collect_all('sklearn')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('scikit-learn')
+
+# ── pandas ───────────────────────────────────────────────────────────────────
+tmp = collect_all('pandas')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('pandas')
+
+# ── shapely ──────────────────────────────────────────────────────────────────
+tmp = collect_all('shapely')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('shapely')
+
+# ── pyproj ───────────────────────────────────────────────────────────────────
+tmp = collect_all('pyproj')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('pyproj')
+
+# ── networkx ─────────────────────────────────────────────────────────────────
+tmp = collect_all('networkx')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('networkx')
+
+# ── pygam ────────────────────────────────────────────────────────────────────
+tmp = collect_all('pygam')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('pygam')
+
+# ── matplotlib ───────────────────────────────────────────────────────────────
+tmp = collect_all('matplotlib')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('matplotlib')
+
+# ── duckdb ───────────────────────────────────────────────────────────────────
+tmp = collect_all('duckdb')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('duckdb')
+
+# ── earthengine-api ──────────────────────────────────────────────────────────
+tmp = collect_all('ee')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+# ── pygbif ───────────────────────────────────────────────────────────────────
+tmp = collect_all('pygbif')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('pygbif')
 
 tmp = collect_all('starlette')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -76,6 +134,18 @@ hiddenimports += [
     *collect_submodules('starlette'),
     *collect_submodules('pygam'),
     'ecoLab',
+    *collect_submodules('numpy'),
+    *collect_submodules('scipy'),
+    *collect_submodules('sklearn'),
+    *collect_submodules('pandas'),
+    *collect_submodules('shapely'),
+    *collect_submodules('pyproj'),
+    *collect_submodules('networkx'),
+    *collect_submodules('pygam'),
+    *collect_submodules('matplotlib'),
+    *collect_submodules('duckdb'),
+    *collect_submodules('ee'),
+    *collect_submodules('pygbif'),
     'ecoLab.backend',
     'ecoLab.backend.main',
     'ecoLab.backend.services',
