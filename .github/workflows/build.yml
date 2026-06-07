@@ -111,6 +111,6 @@ jobs:
           name: "Latest Build"
           prerelease: true
           files: |
-            artifacts/windows/EcoLab.exe
-            artifacts/linux/EcoLab
+            artifacts/windows/EcoLab_windows.exe
+            artifacts/linux/EcoLab_linux
           generate_release_notes: true    
