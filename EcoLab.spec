@@ -17,6 +17,21 @@ datas += copy_metadata('pyinaturalist')
 datas += copy_metadata('pyogrio')
 datas += copy_metadata('geopandas')
 
+# ── ecoobs ────────────────────────────────────────────────────────────────────
+tmp = collect_all('ecoobs')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('ecoobs')
+
+# ── ecoInteract ───────────────────────────────────────────────────────────────
+tmp = collect_all('ecoInteract')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('ecoInteract')
+
+# ── ecoenv ────────────────────────────────────────────────────────────────────
+tmp = collect_all('ecoenv')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('ecoenv')
+
 tmp = collect_all('fastapi')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
@@ -54,6 +69,9 @@ hiddenimports += [
     *collect_submodules('fastapi'),
     *collect_submodules('starlette'),
     'ecoLab',
+    *collect_submodules('ecoobs'),
+    *collect_submodules('ecoInteract'),
+    *collect_submodules('ecoenv'),
     'ecoLab.backend.main',
     'ecoLab.backend.services',
     *collect_submodules('ecoLab'),

@@ -31,6 +31,21 @@ datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 tmp = collect_all('pyogrio')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
+# ── ecoobs ────────────────────────────────────────────────────────────────────
+tmp = collect_all('ecoobs')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('ecoobs')
+
+# ── ecoInteract ───────────────────────────────────────────────────────────────
+tmp = collect_all('ecoInteract')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('ecoInteract')
+
+# ── ecoenv ────────────────────────────────────────────────────────────────────
+tmp = collect_all('ecoenv')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('ecoenv')
+
 # ── geopandas ─────────────────────────────────────────────────────────────────
 tmp = collect_all('geopandas')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -61,6 +76,9 @@ hiddenimports += [
     *collect_submodules('ecoLab'),
     *collect_submodules('pyinaturalist'),
     *collect_submodules('pyogrio'),
+    *collect_submodules('ecoobs'),
+    *collect_submodules('ecoInteract'),
+    *collect_submodules('ecoenv'),
     *collect_submodules('geopandas'),
     'pyogrio._env',
     'fiona',
