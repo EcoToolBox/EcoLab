@@ -59,6 +59,9 @@ jobs:
         env:
           CI: false
 
+      - name: Create required directories
+        run: mkdir -p ecoLab/maps
+        
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         run: | 
