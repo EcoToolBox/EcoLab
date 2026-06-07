@@ -52,7 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EcoLab-Windows-Installer
-          path: installer_output/EcoLab_Setup_vlatest.exe
+          path: installer_output/EcoLab-Windows.exe
           retention-days: 30
 
   # ── Linux: PyInstaller + pacote .deb ───────────────────────────────────────
@@ -166,6 +166,6 @@ jobs:
           name: "Latest Build"
           prerelease: true
           files: |
-            artifacts/windows/EcoLab_Setup_vlatest.exe
-            artifacts/linux/EcoLab-Linux.deb
+              artifacts/windows/EcoLab-Windows.exe
+              artifacts/linux/EcoLab-Linux.deb
           generate_release_notes: true
