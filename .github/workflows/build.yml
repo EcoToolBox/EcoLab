@@ -2,7 +2,7 @@ name: Build EcoLab
 
 on:
   push:
-    tags: ["main"]
+    branches: ["main"]
   workflow_dispatch:  # permite rodar manualmente
 
 jobs:
