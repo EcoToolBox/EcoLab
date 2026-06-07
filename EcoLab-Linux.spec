@@ -74,7 +74,7 @@ hiddenimports += [
     'starlette.middleware.cors',
     *collect_submodules('fastapi'),
     *collect_submodules('starlette'),
-    *collect_submodules('pygam')
+    *collect_submodules('pygam'),
     'ecoLab',
     'ecoLab.backend',
     'ecoLab.backend.main',
