@@ -58,6 +58,11 @@ try:
 except Exception:
     pass
 
+
+# ── pygam package ────────────────────────────────────────────────────────────
+tmp = collect_all('pygam')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
 # ── ecoLab package ────────────────────────────────────────────────────────────
 tmp = collect_all('ecoLab')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -69,6 +74,7 @@ hiddenimports += [
     'starlette.middleware.cors',
     *collect_submodules('fastapi'),
     *collect_submodules('starlette'),
+    *collect_submodules('pygam')
     'ecoLab',
     'ecoLab.backend',
     'ecoLab.backend.main',

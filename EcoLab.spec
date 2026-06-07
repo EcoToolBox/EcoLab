@@ -49,6 +49,9 @@ datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 tmp = collect_all('geopandas')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
+tmp = collect_all('pygam')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
 # ── requests_cache ─────────────────────────────────────────────────────────────────
 tmp = collect_all('requests_cache')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -79,6 +82,7 @@ hiddenimports += [
     *collect_submodules('pyogrio'),
     *collect_submodules('geopandas'),
     'pyogrio._env',
+    *collect_submodules('pygam'),
     'fiona',
     'fiona.ogrext',
 ]
