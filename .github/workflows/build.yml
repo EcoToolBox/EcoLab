@@ -41,7 +41,7 @@ jobs:
           pip install -r requirements-build.txt
           pip install pyinstaller
           pyinstaller EcoLab.spec
-
+      
       - name: Build installer (Inno Setup)
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.4
         with:
@@ -102,46 +102,35 @@ jobs:
 
       - name: Package .deb
         run: |
-          # Estrutura de diretórios do pacote .deb
-          PKG=ecolab_latest_amd64
-          mkdir -p $PKG/DEBIAN
-          mkdir -p $PKG/opt/ecolab
-          mkdir -p $PKG/usr/share/applications
-          mkdir -p $PKG/usr/share/icons/hicolor/256x256/apps
-
-          # Copia o executável gerado pelo PyInstaller
-          cp dist/EcoLab $PKG/opt/ecolab/EcoLab
-          chmod +x $PKG/opt/ecolab/EcoLab
-
-          # Copia ícone (se existir no repositório)
-          if [ -f EcoLab.png ]; then
-            cp EcoLab.png $PKG/usr/share/icons/hicolor/256x256/apps/ecolab.png
-          fi
-
-          # Arquivo de controle do pacote
-          cat > $PKG/DEBIAN/control << 'EOF'
-          Package: ecolab
-          Version: latest
-          Section: science
-          Priority: optional
-          Architecture: amd64
-          Maintainer: UTFPR
-          Description: EcoLab - Ecological Analysis Tool
-          EOF
-
-          # Entrada no menu de aplicativos
-          cat > $PKG/usr/share/applications/ecolab.desktop << 'EOF'
-          [Desktop Entry]
-          Name=EcoLab
-          Exec=/opt/ecolab/EcoLab
-          Icon=ecolab
-          Type=Application
-          Categories=Science;Education;
-          Terminal=false
-          EOF
-
-          # Gera o .deb
-          dpkg-deb --build $PKG EcoLab-Linux.deb
+            PKG=ecolab_0.1.1_amd64
+            mkdir -p $PKG/DEBIAN
+            mkdir -p $PKG/opt/ecolab
+            mkdir -p $PKG/usr/share/applications
+            mkdir -p $PKG/usr/share/icons/hicolor/256x256/apps
+            cp dist/EcoLab $PKG/opt/ecolab/EcoLab
+            chmod +x $PKG/opt/ecolab/EcoLab
+            if [ -f EcoLab.png ]; then
+              cp EcoLab.png $PKG/usr/share/icons/hicolor/256x256/apps/ecolab.png
+            fi
+            cat > $PKG/DEBIAN/control << 'EOF'
+            Package: ecolab
+            Version: 0.1.1
+            Section: science
+            Priority: optional
+            Architecture: amd64
+            Maintainer: UTFPR
+            Description: EcoLab - Ecological Analysis Tool
+            EOF
+              cat > $PKG/usr/share/applications/ecolab.desktop << 'EOF'
+            [Desktop Entry]
+            Name=EcoLab
+            Exec=/opt/ecolab/EcoLab
+            Icon=ecolab
+            Type=Application
+            Categories=Science;Education;
+            Terminal=false
+            EOF
+            dpkg-deb --build $PKG EcoLab-Linux.deb
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
