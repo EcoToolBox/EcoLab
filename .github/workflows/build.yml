@@ -41,18 +41,18 @@ jobs:
           pip install -r requirements-build.txt
           pip install pyinstaller
           pyinstaller EcoLab.spec
-      
+
       - name: Build installer (Inno Setup)
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.4
-        with:
-          path: EcoLab_Installer.iss
-          options: /O+ /DMyAppVersion=latest
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc /O"installer_output" /DAppVersion=0.1.1 "${{ github.workspace }}\EcoLab_Installer.iss"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: EcoLab-Windows-Installer
-          path: installer_output/EcoLab-Windows.exe
+          path: installer_output/*.exe
           retention-days: 30
 
   # ── Linux: PyInstaller + pacote .deb ───────────────────────────────────────
@@ -102,35 +102,40 @@ jobs:
 
       - name: Package .deb
         run: |
-            PKG=ecolab_0.1.1_amd64
-            mkdir -p $PKG/DEBIAN
-            mkdir -p $PKG/opt/ecolab
-            mkdir -p $PKG/usr/share/applications
-            mkdir -p $PKG/usr/share/icons/hicolor/256x256/apps
-            cp dist/EcoLab $PKG/opt/ecolab/EcoLab
-            chmod +x $PKG/opt/ecolab/EcoLab
-            if [ -f EcoLab.png ]; then
-              cp EcoLab.png $PKG/usr/share/icons/hicolor/256x256/apps/ecolab.png
-            fi
-            cat > $PKG/DEBIAN/control << 'EOF'
-            Package: ecolab
-            Version: 0.1.1
-            Section: science
-            Priority: optional
-            Architecture: amd64
-            Maintainer: UTFPR
-            Description: EcoLab - Ecological Analysis Tool
-            EOF
-              cat > $PKG/usr/share/applications/ecolab.desktop << 'EOF'
-            [Desktop Entry]
-            Name=EcoLab
-            Exec=/opt/ecolab/EcoLab
-            Icon=ecolab
-            Type=Application
-            Categories=Science;Education;
-            Terminal=false
-            EOF
-            dpkg-deb --build $PKG EcoLab-Linux.deb
+          PKG=ecolab_0.1.1_amd64
+          mkdir -p $PKG/DEBIAN
+          mkdir -p $PKG/opt/ecolab
+          mkdir -p $PKG/usr/share/applications
+          mkdir -p $PKG/usr/share/icons/hicolor/256x256/apps
+
+          cp dist/EcoLab $PKG/opt/ecolab/EcoLab
+          chmod +x $PKG/opt/ecolab/EcoLab
+
+          if [ -f EcoLab.png ]; then
+            cp EcoLab.png $PKG/usr/share/icons/hicolor/256x256/apps/ecolab.png
+          fi
+
+          cat > $PKG/DEBIAN/control << 'EOF'
+          Package: ecolab
+          Version: 0.1.1
+          Section: science
+          Priority: optional
+          Architecture: amd64
+          Maintainer: UTFPR
+          Description: EcoLab - Ecological Analysis Tool
+          EOF
+
+                    cat > $PKG/usr/share/applications/ecolab.desktop << 'EOF'
+          [Desktop Entry]
+          Name=EcoLab
+          Exec=/opt/ecolab/EcoLab
+          Icon=ecolab
+          Type=Application
+          Categories=Science;Education;
+          Terminal=false
+          EOF
+
+                    dpkg-deb --build $PKG EcoLab-Linux.deb
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -166,6 +171,6 @@ jobs:
           name: "Latest Build"
           prerelease: true
           files: |
-              artifacts/windows/EcoLab-Windows.exe
-              artifacts/linux/EcoLab-Linux.deb
+            artifacts/windows/EcoLab_Setup_v0.1.1.exe
+            artifacts/linux/EcoLab-Linux.deb
           generate_release_notes: true
