@@ -46,13 +46,13 @@ jobs:
         shell: pwsh
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc /O"installer_output" /DAppVersion=0.1.1 "${{ github.workspace }}\EcoLab_Installer.iss"
+          & $iscc "${{ github.workspace }}\EcoLab_Installer.iss"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: EcoLab-Windows-Installer
-          path: installer_output/*.exe
+          path: installer_output/EcoLab_Setup_v0.1.1.exe
           retention-days: 30
 
   # ── Linux: PyInstaller + pacote .deb ───────────────────────────────────────
