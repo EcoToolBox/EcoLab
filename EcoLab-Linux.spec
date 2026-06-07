@@ -17,6 +17,12 @@ datas += copy_metadata('pyinaturalist')
 datas += copy_metadata('pyogrio')
 datas += copy_metadata('geopandas')
 
+tmp = collect_all('fastapi')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+tmp = collect_all('starlette')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
 # ── pyinaturalist ─────────────────────────────────────────────────────────────
 tmp = collect_all('pyinaturalist')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -43,6 +49,11 @@ datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
 # ── hidden imports ────────────────────────────────────────────────────────────
 hiddenimports += [
+    'fastapi.middleware.cors',
+    'fastapi.middleware',
+    'starlette.middleware.cors',
+    *collect_submodules('fastapi'),
+    *collect_submodules('starlette'),
     'ecoLab',
     'ecoLab.backend',
     'ecoLab.backend.main',
@@ -55,6 +66,7 @@ hiddenimports += [
     'fiona',
     'fiona.ogrext',
 ]
+
 
 a = Analysis(
     ['scripts/run_exe.py'],

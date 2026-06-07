@@ -17,6 +17,11 @@ datas += copy_metadata('pyinaturalist')
 datas += copy_metadata('pyogrio')
 datas += copy_metadata('geopandas')
 
+tmp = collect_all('fastapi')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+tmp = collect_all('starlette')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 # ── pyinaturalist ─────────────────────────────────────────────────────────────
 tmp = collect_all('pyinaturalist')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -43,6 +48,12 @@ except Exception:
 
 # ── hidden imports adicionais ─────────────────────────────────────────────────
 hiddenimports += [
+    'fastapi.middleware.cors',
+    'fastapi.middleware',
+    'starlette.middleware.cors',
+    *collect_submodules('fastapi'),
+    *collect_submodules('starlette'),
+    'ecoLab',
     'ecoLab.backend.main',
     'ecoLab.backend.services',
     *collect_submodules('ecoLab'),
