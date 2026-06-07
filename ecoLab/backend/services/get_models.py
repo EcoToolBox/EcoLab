@@ -43,8 +43,8 @@ def run_models(models: dict):
         features = [col for col in finalData.columns if col not in not_features]
 
         # Monta background com presence=0 usando o grid do país
+        backgroundData["presence"] = 0
         background_sample = backgroundData[features].copy()
-        background_sample["presence"] = 0
 
         # Combina presença real + background sintético
         presence_only_df = pd.concat(
