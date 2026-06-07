@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
  */
 export default function LoadingOverlay({
   messages = ["Carregando..."],
-  interval = 100000,
+  interval = 150000,
 }) {
   const [msgIndex, setMsgIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -27,7 +27,7 @@ export default function LoadingOverlay({
   useEffect(() => {
     const id = setInterval(() => {
       setProgress((p) => {
-        if (p >= 95) return p; // stall near end so it never completes prematurely
+        if (p >= 95) return p; 
         return p + Math.random() * 4;
       });
     }, 800);
