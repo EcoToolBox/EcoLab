@@ -4,7 +4,7 @@
 
 #define AppName      "EcoLab"
 #define AppVersion   "0.1.1"
-#define AppPublisher "UTFPR"
+#define AppPublisher "AneSimoes"
 #define AppExeName   "EcoLab.exe"
 #define AppURL       ""
 

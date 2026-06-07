@@ -27,75 +27,78 @@ tmp = collect_all('ecoInteract')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 datas += copy_metadata('ecoInteract')
 
-# ── numpy ────────────────────────────────────────────────────────────────────
-tmp = collect_all('numpy')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('numpy')
-
-# ── scipy ────────────────────────────────────────────────────────────────────
-tmp = collect_all('scipy')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('scipy')
-
-# ── scikit-learn ─────────────────────────────────────────────────────────────
-tmp = collect_all('sklearn')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('scikit-learn')
-
-# ── pandas ───────────────────────────────────────────────────────────────────
-tmp = collect_all('pandas')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('pandas')
-
-# ── shapely ──────────────────────────────────────────────────────────────────
-tmp = collect_all('shapely')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('shapely')
-
-# ── pyproj ───────────────────────────────────────────────────────────────────
-tmp = collect_all('pyproj')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('pyproj')
-
-# ── networkx ─────────────────────────────────────────────────────────────────
-tmp = collect_all('networkx')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('networkx')
-
-# ── pygam ────────────────────────────────────────────────────────────────────
-tmp = collect_all('pygam')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('pygam')
-
-# ── matplotlib ───────────────────────────────────────────────────────────────
-tmp = collect_all('matplotlib')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('matplotlib')
-
-# ── duckdb ───────────────────────────────────────────────────────────────────
-tmp = collect_all('duckdb')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('duckdb')
-
-# ── earthengine-api ──────────────────────────────────────────────────────────
-tmp = collect_all('ee')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-
-# ── pygbif ───────────────────────────────────────────────────────────────────
-tmp = collect_all('pygbif')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('pygbif')
-
 # ── ecoenv ────────────────────────────────────────────────────────────────────
 tmp = collect_all('ecoenv')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 datas += copy_metadata('ecoenv')
 
+# ── numpy ─────────────────────────────────────────────────────────────────────
+tmp = collect_all('numpy')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('numpy')
+
+# ── scipy ─────────────────────────────────────────────────────────────────────
+tmp = collect_all('scipy')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('scipy')
+
+# ── scikit-learn ──────────────────────────────────────────────────────────────
+tmp = collect_all('sklearn')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('scikit-learn')
+
+# ── pandas ────────────────────────────────────────────────────────────────────
+tmp = collect_all('pandas')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('pandas')
+
+# ── shapely ───────────────────────────────────────────────────────────────────
+tmp = collect_all('shapely')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('shapely')
+
+# ── pyproj ────────────────────────────────────────────────────────────────────
+tmp = collect_all('pyproj')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('pyproj')
+
+# ── networkx ──────────────────────────────────────────────────────────────────
+tmp = collect_all('networkx')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('networkx')
+
+# ── pygam ─────────────────────────────────────────────────────────────────────
+tmp = collect_all('pygam')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('pygam')
+
+# ── matplotlib ────────────────────────────────────────────────────────────────
+tmp = collect_all('matplotlib')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('matplotlib')
+
+# ── duckdb ────────────────────────────────────────────────────────────────────
+tmp = collect_all('duckdb')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('duckdb')
+
+# ── earthengine-api ───────────────────────────────────────────────────────────
+tmp = collect_all('ee')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+# ── pygbif ────────────────────────────────────────────────────────────────────
+tmp = collect_all('pygbif')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('pygbif')
+
+# ── fastapi ───────────────────────────────────────────────────────────────────
 tmp = collect_all('fastapi')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
+# ── starlette ─────────────────────────────────────────────────────────────────
 tmp = collect_all('starlette')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
 # ── pyinaturalist ─────────────────────────────────────────────────────────────
 tmp = collect_all('pyinaturalist')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -108,11 +111,41 @@ datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 tmp = collect_all('geopandas')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
-tmp = collect_all('pygam')
+# ── requests_cache ────────────────────────────────────────────────────────────
+tmp = collect_all('requests_cache')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
-# ── requests_cache ─────────────────────────────────────────────────────────────────
-tmp = collect_all('requests_cache')
+# ── pycountry ─────────────────────────────────────────────────────────────────
+tmp = collect_all('pycountry')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('pycountry')
+
+# ── uvicorn ───────────────────────────────────────────────────────────────────
+tmp = collect_all('uvicorn')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+# ── diskcache ─────────────────────────────────────────────────────────────────
+tmp = collect_all('diskcache')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+# ── pooch ─────────────────────────────────────────────────────────────────────
+tmp = collect_all('pooch')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+# ── requests_ratelimiter ──────────────────────────────────────────────────────
+tmp = collect_all('requests_ratelimiter')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+# ── pyrate_limiter ────────────────────────────────────────────────────────────
+tmp = collect_all('pyrate_limiter')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+# ── geodatasets ───────────────────────────────────────────────────────────────
+tmp = collect_all('geodatasets')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+# ── python_dotenv ─────────────────────────────────────────────────────────────
+tmp = collect_all('dotenv')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
 # ── fiona (fallback do geopandas) ─────────────────────────────────────────────
@@ -121,7 +154,7 @@ try:
     datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
     datas += copy_metadata('fiona')
 except Exception:
-    pass  # fiona não instalado, tudo bem
+    pass
 
 # ── hidden imports adicionais ─────────────────────────────────────────────────
 hiddenimports += [
@@ -152,8 +185,15 @@ hiddenimports += [
     *collect_submodules('pyinaturalist'),
     *collect_submodules('pyogrio'),
     *collect_submodules('geopandas'),
+    *collect_submodules('pycountry'),
+    *collect_submodules('uvicorn'),
+    *collect_submodules('diskcache'),
+    *collect_submodules('pooch'),
+    *collect_submodules('requests_ratelimiter'),
+    *collect_submodules('pyrate_limiter'),
+    *collect_submodules('geodatasets'),
+    *collect_submodules('dotenv'),
     'pyogrio._env',
-    *collect_submodules('pygam'),
     'fiona',
     'fiona.ogrext',
 ]
