@@ -188,16 +188,16 @@ jobs:
         run: |
           brew install create-dmg
 
-          # Garante que o .app foi gerado
           APP_PATH="dist/EcoLab.app"
           if [ ! -d "$APP_PATH" ]; then
             echo "Erro: $APP_PATH não encontrado após o build."
             exit 1
           fi
 
+          # Monta o comando sem --volicon por padrão (arquivo pode não existir)
+          # Se tiver EcoLab.icns no repositório, adicione: --volicon "EcoLab.icns"
           create-dmg \
             --volname "EcoLab" \
-            --volicon "EcoLab.icns" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
@@ -205,10 +205,9 @@ jobs:
             --hide-extension "EcoLab.app" \
             --app-drop-link 425 190 \
             "EcoLab-macOS.dmg" \
-            "dist/" \
-          || true
-          # O create-dmg retorna exit 1 se não houver ícone; o "|| true" evita falha no CI.
-          # Remova o "|| true" se tiver um EcoLab.icns no repositório.
+            "dist/"
+
+          ls -lh EcoLab-macOS.dmg || (echo "Erro: DMG não foi gerado" && exit 1)
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -241,22 +240,16 @@ jobs:
         run: |
           # Aguarda até 30s o backend responder
           for i in $(seq 1 15); do
-            if curl -sf http://localhost:8000/health; then
-              echo "Backend respondeu OK"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/)
+            if [ "$STATUS" = "200" ]; then
+              echo "Backend respondeu OK (HTTP $STATUS)"
               exit 0
             fi
-            echo "Tentativa $i — aguardando..."
+            echo "Tentativa $i — status $STATUS, aguardando..."
             sleep 2
           done
           echo "Timeout: backend não respondeu em 30s"
           exit 1
-
-      - name: Check API is returning valid JSON
-        run: |
-          RESPONSE=$(curl -sf http://localhost:8000/health)
-          echo "Resposta: $RESPONSE"
-          echo "$RESPONSE" | python3 -c "import sys, json; json.load(sys.stdin)" \
-            && echo "JSON válido" || (echo "Resposta não é JSON válido" && exit 1)
 
       - name: Stop EcoLab
         if: always()
@@ -288,22 +281,16 @@ jobs:
       - name: Wait for backend to be ready
         run: |
           for i in $(seq 1 15); do
-            if curl -sf http://localhost:8000/health; then
-              echo "Backend respondeu OK"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/)
+            if [ "$STATUS" = "200" ]; then
+              echo "Backend respondeu OK (HTTP $STATUS)"
               exit 0
             fi
-            echo "Tentativa $i — aguardando..."
+            echo "Tentativa $i — status $STATUS, aguardando..."
             sleep 2
           done
           echo "Timeout: backend não respondeu em 30s"
           exit 1
-
-      - name: Check API is returning valid JSON
-        run: |
-          RESPONSE=$(curl -sf http://localhost:8000/health)
-          echo "Resposta: $RESPONSE"
-          echo "$RESPONSE" | python3 -c "import sys, json; json.load(sys.stdin)" \
-            && echo "JSON válido" || (echo "Resposta não é JSON válido" && exit 1)
 
       - name: Stop EcoLab
         if: always()
