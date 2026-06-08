@@ -30,6 +30,12 @@ tmp = collect_all('numpy')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 datas += copy_metadata('numpy')
 
+tmp = collect_all('pkg_resources')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+tmp = collect_all('setuptools')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
 # ── scipy ─────────────────────────────────────────────────────────────────────
 tmp = collect_all('scipy')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -199,6 +205,10 @@ hiddenimports += [
     *collect_submodules('pyrate_limiter'),
     *collect_submodules('geodatasets'),
     *collect_submodules('dotenv'),
+    'pkg_resources',
+    *collect_submodules('pkg_resources'),
+    'setuptools',
+    *collect_submodules('setuptools'),
     'pyogrio._env',
     'fiona',
     'fiona.ogrext',
