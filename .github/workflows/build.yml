@@ -233,9 +233,20 @@ jobs:
 
       - name: Start EcoLab in background
         run: |
-          /opt/ecolab/EcoLab &
+          /opt/ecolab/EcoLab > /tmp/ecolab.log 2>&1 &
           echo $! > /tmp/ecolab.pid
+          sleep 5
+          cat /tmp/ecolab.log
 
+      - name: Diagnóstico de portas
+        run: |
+          sleep 5
+          echo "=== Processos rodando ==="
+          ps aux | grep EcoLab
+          echo "=== Portas abertas ==="
+          ss -tlnp || netstat -tlnp
+          echo "=== Logs do processo (se houver) ==="
+          cat /tmp/ecolab.log 2>/dev/null || true
       - name: Wait for backend to be ready
         run: |
           # Aguarda até 30s o backend responder
@@ -274,9 +285,14 @@ jobs:
           hdiutil detach /Volumes/EcoLab -quiet
 
       - name: Start EcoLab in background
-        run: |
-          /Applications/EcoLab.app/Contents/MacOS/EcoLab &
+        run: |  
+          /Applications/EcoLab.app/Contents/MacOS/EcoLab > /tmp/ecolab.log 2>&1 &
           echo $! > /tmp/ecolab.pid
+          sleep 8
+          echo "=== LOG DO ECOLAB ==="
+          cat /tmp/ecolab.log
+          echo "=== PORTAS ABERTAS ==="
+          netstat -an | grep LISTEN
 
       - name: Wait for backend to be ready
         run: |
