@@ -120,6 +120,10 @@ tmp = collect_all('pycountry')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 datas += copy_metadata('pycountry')
 
+# ── setuptools / pkg_resources ────────────────────────────────────────────────
+tmp = collect_all('setuptools')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
 # ── uvicorn ───────────────────────────────────────────────────────────────────
 tmp = collect_all('uvicorn')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -164,6 +168,9 @@ hiddenimports += [
     *collect_submodules('fastapi'),
     *collect_submodules('starlette'),
     'ecoLab',
+    'pkg_resources',
+    *collect_submodules('pkg_resources'),
+    *collect_submodules('setuptools'),
     *collect_submodules('ecoobs'),
     *collect_submodules('ecoInteract'),
     *collect_submodules('ecoenv'),
