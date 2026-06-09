@@ -177,6 +177,13 @@ jobs:
       - name: Create required directories
         run: mkdir -p ecoLab/maps
 
+      - name: Build executable (PyInstaller)
+        run: |
+          python -m pip install --upgrade pip setuptools
+          pip install -r requirements-build.txt
+          pip install pyinstaller
+          pyinstaller EcoLab-macOS.spec
+          
       # ── Neutraliza o runtime hook pyi_rth_pkgres que crasha no macOS ────────
       # O hook tenta importar pkg_resources antes do app inicializar.
       # Substituímos por um arquivo vazio para evitar o ModuleNotFoundError.
@@ -193,14 +200,6 @@ jobs:
           else:
               print(f'Hook not found (ok): {hook}')
           "
-
-      - name: Build executable (PyInstaller)
-        run: |
-          python -m pip install --upgrade pip setuptools
-          pip install -r requirements-build.txt
-          pip install pyinstaller
-          pyinstaller EcoLab-macOS.spec
-
       - name: Verify .app bundle
         run: |
           echo "=== Conteúdo de dist/ ==="
