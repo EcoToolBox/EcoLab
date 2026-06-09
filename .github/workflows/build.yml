@@ -192,11 +192,14 @@ jobs:
           python -m pip install --upgrade pip setuptools
           pip install -r requirements-build.txt
           pip install pyinstaller
-          pyinstaller EcoLab-macOS.spec
 
-      # ── Neutraliza o runtime hook pyi_rth_pkgres que crasha no macOS ────────
-      # O hook tenta importar pkg_resources antes do app inicializar.
-      # Substituímos por um arquivo vazio para evitar o ModuleNotFoundError.
+      - name: Locate pyinstaller binary         # ← novo, temporário
+        run: |
+          which pyinstaller
+          which python
+          python -c "import sys; print(sys.executable)"
+          pyinstaller --version
+
       - name: Neutralize pyi_rth_pkgres hook
         run: |
           python -c "
@@ -208,6 +211,11 @@ jobs:
               f.write('# disabled\n')
           print('OK')
           "
+
+      - name: Run PyInstaller                   # ← troca para -m
+        run: python -m PyInstaller EcoLab-macOS.spec
+
+        
       - name: Verify .app bundle
         run: |
           echo "=== Conteúdo de dist/ ==="
