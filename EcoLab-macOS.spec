@@ -227,13 +227,13 @@ exe = EXE(
     a.datas,
     [('v', None, 'OPTION')],
     name='EcoLab',
-    debug=True,
+    debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,          # False = sem janela de terminal no macOS
+    console=True,          # False = sem janela de terminal no macOS
     disable_windowed_traceback=False,
     argv_emulation=True,    # Necessário no macOS para passar argumentos ao app
     target_arch=None,       # None = arquitetura nativa; use 'universal2' para Intel+Apple Silicon
