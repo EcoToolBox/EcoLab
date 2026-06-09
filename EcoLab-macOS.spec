@@ -12,25 +12,10 @@ datas += [
     ('ecoLab/maps', 'ecoLab/maps'),
 ]
 
-# ── pkg_resources: copia física via setuptools ───────────────────────────────
-import setuptools as _st
-import os as _os
-_st_dir = _os.path.dirname(_st.__file__)
-_pkgr_path = _os.path.join(_os.path.dirname(_st_dir), 'pkg_resources')
-if _os.path.isdir(_pkgr_path):
-    datas += [(_pkgr_path, 'pkg_resources')]
-
 # ── Metadados (importlib.metadata.version) ────────────────────────────────────
 datas += copy_metadata('pyinaturalist')
 datas += copy_metadata('pyogrio')
 datas += copy_metadata('geopandas')
-
-# ── setuptools / pkg_resources ────────────────────────────────────────────────
-tmp = collect_all('pkg_resources')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-
-tmp = collect_all('setuptools')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
 # ── fastapi ───────────────────────────────────────────────────────────────────
 tmp = collect_all('fastapi')
@@ -177,10 +162,6 @@ except Exception:
 
 # ── hidden imports ────────────────────────────────────────────────────────────
 hiddenimports += [
-    'pkg_resources',
-    *collect_submodules('pkg_resources'),
-    'setuptools',
-    *collect_submodules('setuptools'),
     'fastapi.middleware.cors',
     'fastapi.middleware',
     'starlette.middleware.cors',
@@ -232,7 +213,7 @@ a = Analysis(
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=['hooks/hook-pkg_resources.py'],
-    excludes=[],
+    excludes=['pkg_resources', 'setuptools'],
     noarchive=True,
     optimize=0,
 )
@@ -246,7 +227,7 @@ exe = EXE(
     a.datas,
     [('v', None, 'OPTION')],
     name='EcoLab',
-    debug=False,
+    debug=True,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
