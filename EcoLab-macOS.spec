@@ -17,6 +17,13 @@ datas += copy_metadata('pyinaturalist')
 datas += copy_metadata('pyogrio')
 datas += copy_metadata('geopandas')
 
+# ── setuptools / pkg_resources ────────────────────────────────────────────────
+tmp = collect_all('pkg_resources')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+tmp = collect_all('setuptools')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
 # ── fastapi ───────────────────────────────────────────────────────────────────
 tmp = collect_all('fastapi')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -29,12 +36,6 @@ datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 tmp = collect_all('numpy')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 datas += copy_metadata('numpy')
-
-tmp = collect_all('pkg_resources')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-
-tmp = collect_all('setuptools')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
 # ── scipy ─────────────────────────────────────────────────────────────────────
 tmp = collect_all('scipy')
@@ -168,6 +169,10 @@ except Exception:
 
 # ── hidden imports ────────────────────────────────────────────────────────────
 hiddenimports += [
+    'pkg_resources',
+    *collect_submodules('pkg_resources'),
+    'setuptools',
+    *collect_submodules('setuptools'),
     'fastapi.middleware.cors',
     'fastapi.middleware',
     'starlette.middleware.cors',
@@ -205,10 +210,6 @@ hiddenimports += [
     *collect_submodules('pyrate_limiter'),
     *collect_submodules('geodatasets'),
     *collect_submodules('dotenv'),
-    'pkg_resources',
-    *collect_submodules('pkg_resources'),
-    'setuptools',
-    *collect_submodules('setuptools'),
     'pyogrio._env',
     'fiona',
     'fiona.ogrext',
@@ -222,7 +223,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['disable_pkg_resources_hook.py'],
     excludes=[],
     noarchive=True,
     optimize=0,
