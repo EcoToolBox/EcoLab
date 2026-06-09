@@ -214,7 +214,7 @@ a = Analysis(
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['pyi_rth_pkgres'],
     noarchive=True,
     optimize=0,
 )
