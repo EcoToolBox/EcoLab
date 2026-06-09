@@ -276,15 +276,56 @@ jobs:
           cp -R /Volumes/EcoLab/EcoLab.app /Applications/EcoLab.app
           hdiutil detach /Volumes/EcoLab -quiet
 
+      # ── Diagnóstico: estrutura do .app ─────────────────────────────────────
+      - name: Inspect .app bundle structure
+        run: |
+          echo "=== Conteúdo de Contents/ ==="
+          ls -la /Applications/EcoLab.app/Contents/
+
+          echo "=== Conteúdo de Contents/MacOS/ ==="
+          ls -la /Applications/EcoLab.app/Contents/MacOS/
+
+          echo "=== Conteúdo de Contents/Resources/ (primeiros 40) ==="
+          ls /Applications/EcoLab.app/Contents/Resources/ 2>/dev/null | head -40 || echo "(sem Resources)"
+
+          echo "=== Info.plist ==="
+          cat /Applications/EcoLab.app/Contents/Info.plist 2>/dev/null || echo "(sem Info.plist)"
+
+          echo "=== Permissões do binário ==="
+          file /Applications/EcoLab.app/Contents/MacOS/EcoLab
+          ls -lah /Applications/EcoLab.app/Contents/MacOS/EcoLab
+
+      # ── Inicia o app e coleta logs em pulsos de 5s ─────────────────────────
       - name: Start EcoLab in background
         run: |
+          echo "=== VARIÁVEIS DE AMBIENTE ==="
+          env | sort
+
+          echo "=== REMOVENDO QUARANTINE (Gatekeeper) ==="
+          xattr -rd com.apple.quarantine /Applications/EcoLab.app 2>/dev/null || true
+
+          echo "=== INICIANDO ECOLAB ==="
           /Applications/EcoLab.app/Contents/MacOS/EcoLab > /tmp/ecolab.log 2>&1 &
           echo $! > /tmp/ecolab.pid
-          sleep 20
-          echo "=== LOG DO ECOLAB ==="
-          cat /tmp/ecolab.log
-          echo "=== PORTAS ABERTAS ==="
-          netstat -an | grep LISTEN
+          echo "PID registrado: $(cat /tmp/ecolab.pid)"
+
+          for i in 1 2 3 4; do
+            sleep 5
+            echo ""
+            echo "────────────── ${i}x5s ──────────────"
+
+            echo "--- log acumulado ---"
+            cat /tmp/ecolab.log
+
+            echo "--- portas em LISTEN ---"
+            netstat -an | grep LISTEN | grep -E '8000|800' || echo "(nenhuma porta 8000)"
+
+            echo "--- processo ainda vivo? ---"
+            kill -0 $(cat /tmp/ecolab.pid) 2>&1 && echo "VIVO" || echo "MORREU — exit code registrado abaixo"
+
+            echo "--- processos python/uvicorn/ecolab ---"
+            ps aux | grep -E '[Ee]co[Ll]ab|python|uvicorn' | grep -v grep || echo "(nenhum)"
+          done
 
       - name: Wait for backend to be ready
         run: |
@@ -299,6 +340,43 @@ jobs:
           done
           echo "Timeout: backend não respondeu em 60s"
           exit 1
+
+      # ── Dump completo só em caso de falha ──────────────────────────────────
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          echo "════════════════════════════════════════"
+          echo "           DIAGNÓSTICO DE FALHA         "
+          echo "════════════════════════════════════════"
+
+          echo ""
+          echo "=== LOG COMPLETO DO PROCESSO ==="
+          cat /tmp/ecolab.log || echo "(log vazio ou inexistente)"
+
+          echo ""
+          echo "=== TODAS AS PORTAS EM LISTEN ==="
+          netstat -an | grep LISTEN
+
+          echo ""
+          echo "=== PROCESSOS ATIVOS (python/uvicorn/ecolab) ==="
+          ps aux | grep -E '[Ee]co[Ll]ab|python|uvicorn' | grep -v grep || echo "(nenhum)"
+
+          echo ""
+          echo "=== DYLIBS DO BINÁRIO PRINCIPAL ==="
+          otool -L /Applications/EcoLab.app/Contents/MacOS/EcoLab 2>/dev/null | head -40 || echo "(otool falhou)"
+
+          echo ""
+          echo "=== VARIÁVEIS DE AMBIENTE NO MOMENTO DA FALHA ==="
+          env | sort
+
+          echo ""
+          echo "=== XATTR DO .app (quarantine?) ==="
+          xattr -l /Applications/EcoLab.app 2>/dev/null || echo "(sem atributos)"
+
+          echo ""
+          echo "=== ÚLTIMAS LINHAS DO SYSTEM LOG (uvicorn/python) ==="
+          log show --last 2m --predicate 'process == "EcoLab" OR process CONTAINS "python"' \
+            --style compact 2>/dev/null | tail -50 || echo "(log do sistema indisponível)"
 
       - name: Stop EcoLab
         if: always()
