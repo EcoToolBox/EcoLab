@@ -17,13 +17,20 @@ datas += copy_metadata('pyinaturalist')
 datas += copy_metadata('pyogrio')
 datas += copy_metadata('geopandas')
 
-# ── fastapi ───────────────────────────────────────────────────────────────────
-tmp = collect_all('fastapi')
+# ── ecoobs ────────────────────────────────────────────────────────────────────
+tmp = collect_all('ecoobs')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('ecoobs')
 
-# ── starlette ─────────────────────────────────────────────────────────────────
-tmp = collect_all('starlette')
+# ── ecoInteract ───────────────────────────────────────────────────────────────
+tmp = collect_all('ecoInteract')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('ecoInteract')
+
+# ── ecoenv ────────────────────────────────────────────────────────────────────
+tmp = collect_all('ecoenv')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('ecoenv')
 
 # ── numpy ─────────────────────────────────────────────────────────────────────
 tmp = collect_all('numpy')
@@ -84,35 +91,24 @@ tmp = collect_all('pygbif')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 datas += copy_metadata('pygbif')
 
+# ── fastapi ───────────────────────────────────────────────────────────────────
+tmp = collect_all('fastapi')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
+# ── starlette ─────────────────────────────────────────────────────────────────
+tmp = collect_all('starlette')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+
 # ── pyinaturalist ─────────────────────────────────────────────────────────────
 tmp = collect_all('pyinaturalist')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
-# ── pyogrio + GDAL ────────────────────────────────────────────────────────────
+# ── pyogrio + dylibs do GDAL ─────────────────────────────────────────────────
 tmp = collect_all('pyogrio')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
 # ── geopandas ─────────────────────────────────────────────────────────────────
 tmp = collect_all('geopandas')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-
-# ── ecoobs ────────────────────────────────────────────────────────────────────
-tmp = collect_all('ecoobs')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('ecoobs')
-
-# ── ecoInteract ───────────────────────────────────────────────────────────────
-tmp = collect_all('ecoInteract')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('ecoInteract')
-
-# ── ecoenv ────────────────────────────────────────────────────────────────────
-tmp = collect_all('ecoenv')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-datas += copy_metadata('ecoenv')
-
-# ── ecoLab package ────────────────────────────────────────────────────────────
-tmp = collect_all('ecoLab')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
 # ── requests_cache ────────────────────────────────────────────────────────────
@@ -160,15 +156,19 @@ try:
 except Exception:
     pass
 
-# ── hidden imports ────────────────────────────────────────────────────────────
+# ── hidden imports adicionais ─────────────────────────────────────────────────
 hiddenimports += [
     'fastapi.middleware.cors',
     'fastapi.middleware',
     'starlette.middleware.cors',
     *collect_submodules('fastapi'),
     *collect_submodules('starlette'),
-    *collect_submodules('pygam'),
     'ecoLab',
+    *collect_submodules('ecoobs'),
+    *collect_submodules('ecoInteract'),
+    *collect_submodules('ecoenv'),
+    'ecoLab.backend.main',
+    'ecoLab.backend.services',
     *collect_submodules('numpy'),
     *collect_submodules('scipy'),
     *collect_submodules('sklearn'),
@@ -181,15 +181,9 @@ hiddenimports += [
     *collect_submodules('duckdb'),
     *collect_submodules('ee'),
     *collect_submodules('pygbif'),
-    'ecoLab.backend',
-    'ecoLab.backend.main',
-    'ecoLab.backend.services',
     *collect_submodules('ecoLab'),
     *collect_submodules('pyinaturalist'),
     *collect_submodules('pyogrio'),
-    *collect_submodules('ecoobs'),
-    *collect_submodules('ecoInteract'),
-    *collect_submodules('ecoenv'),
     *collect_submodules('geopandas'),
     *collect_submodules('pycountry'),
     *collect_submodules('uvicorn'),
@@ -205,15 +199,15 @@ hiddenimports += [
 ]
 
 a = Analysis(
-    ['scripts/run_exe.py'],
-    pathex=['.'],
+    ['scripts/run_exe.py'],          # barras normais no macOS
+    pathex=[],                        # sem pathex hardcoded – CI resolve pelo venv
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=['hooks'],
+    hookspath=[],
     hooksconfig={},
-    runtime_hooks=['hooks/hook-pkg_resources.py'],
-    excludes=['pkg_resources', 'setuptools'],
+    runtime_hooks=[],
+    excludes=[],
     noarchive=True,
     optimize=0,
 )
@@ -227,31 +221,30 @@ exe = EXE(
     a.datas,
     [('v', None, 'OPTION')],
     name='EcoLab',
-    debug=False,
+    debug=True,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,          # False = sem janela de terminal no macOS
+    console=True,               # False se quiser sem janela de terminal
     disable_windowed_traceback=False,
-    argv_emulation=True,    # Necessário no macOS para passar argumentos ao app
-    target_arch=None,       # None = arquitetura nativa; use 'universal2' para Intel+Apple Silicon
-    codesign_identity=None,
+    argv_emulation=False,       # True ativa drag-and-drop via Apple Events (opcional)
+    target_arch='arm64',        # Apple Silicon; use 'x86_64' ou None para universal2
+    codesign_identity=None,     # preencha com 'Developer ID Application: ...' para distribuição
     entitlements_file=None,
+    # manifest não existe no macOS – removido
 )
 
-# ── Empacotamento como .app bundle (padrão macOS) ─────────────────────────────
-app = BUNDLE(
-    exe,
-    name='EcoLab.app',
-    icon=None,              # Substitua por 'EcoLab.icns' se tiver um ícone
-    bundle_identifier='br.edu.utfpr.ecolab',
-    info_plist={
-        'CFBundleName': 'EcoLab',
-        'CFBundleDisplayName': 'EcoLab',
-        'CFBundleVersion': '0.1.1',
-        'CFBundleShortVersionString': '0.1.1',
-        'NSHighResolutionCapable': True,
-    },
-)
+# ── (Opcional) empacotar como .app ────────────────────────────────────────────
+# Descomente o bloco abaixo se quiser um bundle .app em vez do binário puro.
+# app = BUNDLE(
+#     exe,
+#     name='EcoLab.app',
+#     icon=None,                   # substitua por 'ecoLab/assets/icon.icns'
+#     bundle_identifier='br.edu.utfpr.ecolab',
+#     info_plist={
+#         'NSHighResolutionCapable': True,
+#         'CFBundleShortVersionString': '1.0.0',
+#     },
+# )
