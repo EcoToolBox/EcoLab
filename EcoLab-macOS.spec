@@ -12,11 +12,13 @@ datas += [
     ('ecoLab/maps', 'ecoLab/maps'),
 ]
 
-# ── pkg_resources: copia física dos arquivos no bundle ───────────────────────
-import pkg_resources as _pkgr
+# ── pkg_resources: copia física via setuptools ───────────────────────────────
+import setuptools as _st
 import os as _os
-_pkgr_path = _os.path.dirname(_pkgr.__file__)
-datas += [(_pkgr_path, 'pkg_resources')]
+_st_dir = _os.path.dirname(_st.__file__)
+_pkgr_path = _os.path.join(_os.path.dirname(_st_dir), 'pkg_resources')
+if _os.path.isdir(_pkgr_path):
+    datas += [(_pkgr_path, 'pkg_resources')]
 
 # ── Metadados (importlib.metadata.version) ────────────────────────────────────
 datas += copy_metadata('pyinaturalist')
