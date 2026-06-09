@@ -238,13 +238,13 @@ exe = EXE(
 
 # ── (Opcional) empacotar como .app ────────────────────────────────────────────
 # Descomente o bloco abaixo se quiser um bundle .app em vez do binário puro.
-# app = BUNDLE(
-#     exe,
-#     name='EcoLab.app',
-#     icon=None,                   # substitua por 'ecoLab/assets/icon.icns'
-#     bundle_identifier='br.edu.utfpr.ecolab',
-#     info_plist={
-#         'NSHighResolutionCapable': True,
-#         'CFBundleShortVersionString': '1.0.0',
-#     },
-# )
+app = BUNDLE(
+    exe,
+    name='EcoLab.app',
+    icon=None,                   # substitua por 'ecoLab/assets/icon.icns'
+    bundle_identifier='br.edu.utfpr.ecolab',
+    info_plist={
+        'NSHighResolutionCapable': True,
+        'CFBundleShortVersionString': '1.0.0',
+    },
+)
