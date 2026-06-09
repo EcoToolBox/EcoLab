@@ -203,12 +203,10 @@ jobs:
           import PyInstaller, os
           hook = os.path.join(os.path.dirname(PyInstaller.__file__),
                               'hooks', 'rthooks', 'pyi_rth_pkgres.py')
-          if os.path.exists(hook):
-              with open(hook, 'w') as f:
-                  f.write('# disabled – pkg_resources handled via collect_all\n')
-              print(f'Hook neutralized: {hook}')
-          else:
-              print(f'Hook not found (ok): {hook}')
+          print(f'Editando: {hook}')
+          with open(hook, 'w') as f:
+              f.write('# disabled\n')
+          print('OK')
           "
       - name: Verify .app bundle
         run: |
