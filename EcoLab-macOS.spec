@@ -120,10 +120,6 @@ tmp = collect_all('pycountry')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 datas += copy_metadata('pycountry')
 
-# ── setuptools / pkg_resources ────────────────────────────────────────────────
-tmp = collect_all('setuptools')
-datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
-
 # ── uvicorn ───────────────────────────────────────────────────────────────────
 tmp = collect_all('uvicorn')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
@@ -152,6 +148,12 @@ datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 tmp = collect_all('dotenv')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
+# ── setuptools / pkg_resources ────────────────────────────────────────────────
+# Necessário no macOS para o runtime hook pyi_rth_pkgres não crashar
+tmp = collect_all('setuptools')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+datas += copy_metadata('setuptools')
+
 # ── fiona (fallback do geopandas) ─────────────────────────────────────────────
 try:
     tmp = collect_all('fiona')
@@ -162,15 +164,16 @@ except Exception:
 
 # ── hidden imports adicionais ─────────────────────────────────────────────────
 hiddenimports += [
+    'pkg_resources',
+    'pkg_resources.extern',
+    *collect_submodules('pkg_resources'),
+    *collect_submodules('setuptools'),
     'fastapi.middleware.cors',
     'fastapi.middleware',
     'starlette.middleware.cors',
     *collect_submodules('fastapi'),
     *collect_submodules('starlette'),
     'ecoLab',
-    'pkg_resources',
-    *collect_submodules('pkg_resources'),
-    *collect_submodules('setuptools'),
     *collect_submodules('ecoobs'),
     *collect_submodules('ecoInteract'),
     *collect_submodules('ecoenv'),
@@ -206,15 +209,15 @@ hiddenimports += [
 ]
 
 a = Analysis(
-    ['scripts/run_exe.py'],          # barras normais no macOS
-    pathex=[],                        # sem pathex hardcoded – CI resolve pelo venv
+    ['scripts/run_exe.py'],
+    pathex=[],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=['hooks'],
+    hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['pyi_rth_pkgres'],
+    excludes=[],
     noarchive=True,
     optimize=0,
 )
@@ -234,24 +237,24 @@ exe = EXE(
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,               # False se quiser sem janela de terminal
+    console=True,
     disable_windowed_traceback=False,
-    argv_emulation=False,       # True ativa drag-and-drop via Apple Events (opcional)
-    target_arch='arm64',        # Apple Silicon; use 'x86_64' ou None para universal2
-    codesign_identity=None,     # preencha com 'Developer ID Application: ...' para distribuição
+    argv_emulation=False,
+    target_arch='arm64',
+    codesign_identity=None,
     entitlements_file=None,
-    # manifest não existe no macOS – removido
 )
 
-# ── (Opcional) empacotar como .app ────────────────────────────────────────────
-# Descomente o bloco abaixo se quiser um bundle .app em vez do binário puro.
+# ── Bundle .app (necessário para criar o .dmg) ────────────────────────────────
 app = BUNDLE(
     exe,
     name='EcoLab.app',
-    icon=None,                   # substitua por 'ecoLab/assets/icon.icns'
+    icon=None,                          # substitua por 'ecoLab/assets/icon.icns' se tiver
     bundle_identifier='br.edu.utfpr.ecolab',
     info_plist={
         'NSHighResolutionCapable': True,
         'CFBundleShortVersionString': '1.0.0',
+        'CFBundleName': 'EcoLab',
+        'CFBundleDisplayName': 'EcoLab',
     },
 )

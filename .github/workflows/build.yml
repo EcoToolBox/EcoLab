@@ -115,7 +115,7 @@ jobs:
             cp EcoLab.png $PKG/usr/share/icons/hicolor/256x256/apps/ecolab.png
           fi
 
-          cat > $PKG/DEBIAN/control << 'EOF'
+          cat > $PKG/DEBIAN/control << 'CTRL'
           Package: ecolab
           Version: 0.1.1
           Section: science
@@ -123,9 +123,9 @@ jobs:
           Architecture: amd64
           Maintainer: UTFPR
           Description: EcoLab - Ecological Analysis Tool
-          EOF
+          CTRL
 
-          cat > $PKG/usr/share/applications/ecolab.desktop << 'EOF'
+          cat > $PKG/usr/share/applications/ecolab.desktop << 'DESK'
           [Desktop Entry]
           Name=EcoLab
           Exec=/opt/ecolab/EcoLab
@@ -133,7 +133,7 @@ jobs:
           Type=Application
           Categories=Science;Education;
           Terminal=false
-          EOF
+          DESK
 
           dpkg-deb --build $PKG EcoLab-Linux.deb
 
@@ -177,6 +177,23 @@ jobs:
       - name: Create required directories
         run: mkdir -p ecoLab/maps
 
+      # ── Neutraliza o runtime hook pyi_rth_pkgres que crasha no macOS ────────
+      # O hook tenta importar pkg_resources antes do app inicializar.
+      # Substituímos por um arquivo vazio para evitar o ModuleNotFoundError.
+      - name: Neutralize pyi_rth_pkgres hook
+        run: |
+          python -c "
+          import PyInstaller, os
+          hook = os.path.join(os.path.dirname(PyInstaller.__file__),
+                              'hooks', 'rthooks', 'pyi_rth_pkgres.py')
+          if os.path.exists(hook):
+              with open(hook, 'w') as f:
+                  f.write('# disabled – pkg_resources handled via collect_all\n')
+              print(f'Hook neutralized: {hook}')
+          else:
+              print(f'Hook not found (ok): {hook}')
+          "
+
       - name: Build executable (PyInstaller)
         run: |
           python -m pip install --upgrade pip setuptools
@@ -184,17 +201,19 @@ jobs:
           pip install pyinstaller
           pyinstaller EcoLab-macOS.spec
 
+      - name: Verify .app bundle
+        run: |
+          echo "=== Conteúdo de dist/ ==="
+          ls -la dist/
+          test -d dist/EcoLab.app || (echo "ERRO: dist/EcoLab.app não encontrado" && exit 1)
+          echo "=== Estrutura do .app ==="
+          ls -la dist/EcoLab.app/Contents/
+          ls -la dist/EcoLab.app/Contents/MacOS/
+
       - name: Package .dmg
         run: |
           brew install create-dmg
 
-          APP_PATH="dist/EcoLab.app"
-          if [ ! -d "$APP_PATH" ]; then
-            echo "Erro: $APP_PATH não encontrado após o build."
-            exit 1
-          fi
-
-          # Se tiver EcoLab.icns no repositório, adicione: --volicon "EcoLab.icns"
           create-dmg \
             --volname "EcoLab" \
             --window-pos 200 120 \
@@ -276,7 +295,6 @@ jobs:
           cp -R /Volumes/EcoLab/EcoLab.app /Applications/EcoLab.app
           hdiutil detach /Volumes/EcoLab -quiet
 
-      # ── Diagnóstico: estrutura do .app ─────────────────────────────────────
       - name: Inspect .app bundle structure
         run: |
           echo "=== Conteúdo de Contents/ ==="
@@ -285,9 +303,6 @@ jobs:
           echo "=== Conteúdo de Contents/MacOS/ ==="
           ls -la /Applications/EcoLab.app/Contents/MacOS/
 
-          echo "=== Conteúdo de Contents/Resources/ (primeiros 40) ==="
-          ls /Applications/EcoLab.app/Contents/Resources/ 2>/dev/null | head -40 || echo "(sem Resources)"
-
           echo "=== Info.plist ==="
           cat /Applications/EcoLab.app/Contents/Info.plist 2>/dev/null || echo "(sem Info.plist)"
 
@@ -295,36 +310,22 @@ jobs:
           file /Applications/EcoLab.app/Contents/MacOS/EcoLab
           ls -lah /Applications/EcoLab.app/Contents/MacOS/EcoLab
 
-      # ── Inicia o app e coleta logs em pulsos de 5s ─────────────────────────
       - name: Start EcoLab in background
         run: |
-          echo "=== VARIÁVEIS DE AMBIENTE ==="
-          env | sort
-
           echo "=== REMOVENDO QUARANTINE (Gatekeeper) ==="
           xattr -rd com.apple.quarantine /Applications/EcoLab.app 2>/dev/null || true
 
           echo "=== INICIANDO ECOLAB ==="
           /Applications/EcoLab.app/Contents/MacOS/EcoLab > /tmp/ecolab.log 2>&1 &
           echo $! > /tmp/ecolab.pid
-          echo "PID registrado: $(cat /tmp/ecolab.pid)"
+          echo "PID: $(cat /tmp/ecolab.pid)"
 
           for i in 1 2 3 4; do
             sleep 5
-            echo ""
             echo "────────────── ${i}x5s ──────────────"
-
-            echo "--- log acumulado ---"
             cat /tmp/ecolab.log
-
-            echo "--- portas em LISTEN ---"
-            netstat -an | grep LISTEN | grep -E '8000|800' || echo "(nenhuma porta 8000)"
-
-            echo "--- processo ainda vivo? ---"
-            kill -0 $(cat /tmp/ecolab.pid) 2>&1 && echo "VIVO" || echo "MORREU — exit code registrado abaixo"
-
-            echo "--- processos python/uvicorn/ecolab ---"
-            ps aux | grep -E '[Ee]co[Ll]ab|python|uvicorn' | grep -v grep || echo "(nenhum)"
+            netstat -an | grep LISTEN | grep -E '8000' || echo "(porta 8000 ainda não aberta)"
+            kill -0 $(cat /tmp/ecolab.pid) 2>&1 && echo "PROCESSO VIVO" || echo "PROCESSO MORREU"
           done
 
       - name: Wait for backend to be ready
@@ -341,7 +342,6 @@ jobs:
           echo "Timeout: backend não respondeu em 60s"
           exit 1
 
-      # ── Dump completo só em caso de falha ──────────────────────────────────
       - name: Dump diagnostics on failure
         if: failure()
         run: |
@@ -349,34 +349,21 @@ jobs:
           echo "           DIAGNÓSTICO DE FALHA         "
           echo "════════════════════════════════════════"
 
-          echo ""
-          echo "=== LOG COMPLETO DO PROCESSO ==="
-          cat /tmp/ecolab.log || echo "(log vazio ou inexistente)"
+          echo "=== LOG COMPLETO ==="
+          cat /tmp/ecolab.log || echo "(log vazio)"
 
-          echo ""
-          echo "=== TODAS AS PORTAS EM LISTEN ==="
+          echo "=== PORTAS EM LISTEN ==="
           netstat -an | grep LISTEN
 
-          echo ""
-          echo "=== PROCESSOS ATIVOS (python/uvicorn/ecolab) ==="
+          echo "=== PROCESSOS ATIVOS ==="
           ps aux | grep -E '[Ee]co[Ll]ab|python|uvicorn' | grep -v grep || echo "(nenhum)"
 
-          echo ""
-          echo "=== DYLIBS DO BINÁRIO PRINCIPAL ==="
-          otool -L /Applications/EcoLab.app/Contents/MacOS/EcoLab 2>/dev/null | head -40 || echo "(otool falhou)"
+          echo "=== DYLIBS DO BINÁRIO ==="
+          otool -L /Applications/EcoLab.app/Contents/MacOS/EcoLab 2>/dev/null | head -40
 
-          echo ""
-          echo "=== VARIÁVEIS DE AMBIENTE NO MOMENTO DA FALHA ==="
-          env | sort
-
-          echo ""
-          echo "=== XATTR DO .app (quarantine?) ==="
-          xattr -l /Applications/EcoLab.app 2>/dev/null || echo "(sem atributos)"
-
-          echo ""
-          echo "=== ÚLTIMAS LINHAS DO SYSTEM LOG (uvicorn/python) ==="
+          echo "=== SYSTEM LOG (últimos 2min) ==="
           log show --last 2m --predicate 'process == "EcoLab" OR process CONTAINS "python"' \
-            --style compact 2>/dev/null | tail -50 || echo "(log do sistema indisponível)"
+            --style compact 2>/dev/null | tail -50 || echo "(indisponível)"
 
       - name: Stop EcoLab
         if: always()
