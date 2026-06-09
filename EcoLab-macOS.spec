@@ -12,6 +12,12 @@ datas += [
     ('ecoLab/maps', 'ecoLab/maps'),
 ]
 
+# ── pkg_resources: copia física dos arquivos no bundle ───────────────────────
+import pkg_resources as _pkgr
+import os as _os
+_pkgr_path = _os.path.dirname(_pkgr.__file__)
+datas += [(_pkgr_path, 'pkg_resources')]
+
 # ── Metadados (importlib.metadata.version) ────────────────────────────────────
 datas += copy_metadata('pyinaturalist')
 datas += copy_metadata('pyogrio')
@@ -223,7 +229,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=['hooks'],
     hooksconfig={},
-    runtime_hooks=['disable_pkg_resources_hook.py'],
+    runtime_hooks=['hooks/rthook-fix-pkgres.py'],
     excludes=[],
     noarchive=True,
     optimize=0,
