@@ -28,9 +28,10 @@ export default function PlaceCountryOrMap({ value, setValue }) {
                     .map((c) => ({
                         label: c.nome.abreviado,
                         code: c.id?.M49 || c.id,
-                    }))
+                        ingles: c.nome["abreviado-EN"]
+                    })) 
                     .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
-
+                    console.log(formatted)
                 setOptions(formatted);
             } catch (err) {
                 setOptions([]);

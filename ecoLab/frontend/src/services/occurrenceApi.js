@@ -73,7 +73,7 @@ const occurrenceApi = {
           body: JSON.stringify({
             sources: sources,
             speciesList: speciesList,
-            country: country.label,
+            country: country.ingles ?? country.label,
             year: year,
             points: points
           }),
