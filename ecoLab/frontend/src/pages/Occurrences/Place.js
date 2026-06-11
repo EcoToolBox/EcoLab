@@ -9,7 +9,7 @@ import {
   CircularProgress 
 } from "@mui/material";
 
-import {  useState } from "react";
+import { useState, useEffect } from "react";
 import MapSelector from "./Map";
 
 
@@ -17,31 +17,30 @@ export default function PlaceCountryOrMap({ value, setValue }) {
     const [options, setOptions] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    
-    const fetchCountries = async (query) => {
-    if (!query || query.length < 2) return;
+    useEffect(() => {
+        const fetchCountries = async () => {
+            setLoading(true);
+            try {
+                const res = await fetch("https://servicodados.ibge.gov.br/api/v1/paises");
+                const data = await res.json();
 
-    setLoading(true);
+                const formatted = data
+                    .map((c) => ({
+                        label: c.nome.abreviado,
+                        code: c.id?.M49 || c.id,
+                    }))
+                    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 
-    try {
-        const res = await fetch(
-        `https://restcountries.com/v3.1/name/${query}`
-        );
+                setOptions(formatted);
+            } catch (err) {
+                setOptions([]);
+            }
+            setLoading(false);
+        };
 
-        const data = await res.json();
+        fetchCountries();
+    }, []);
 
-        const formatted = data.map((c) => ({
-        label: c.name.common,
-        code: c.cca2,
-        }));
-
-        setOptions(formatted);
-    } catch (err) {
-        setOptions([]);
-    }
-
-    setLoading(false);
-    };
   const handleModeChange = (_, newMode) => {
     if (!newMode) return;
 
@@ -53,20 +52,6 @@ export default function PlaceCountryOrMap({ value, setValue }) {
 
   return (
     <Box>
-{/*      <Typography sx={{ fontWeight: 600, mb: 2 }}>
-        Localização
-      </Typography>
- 
-      <ToggleButtonGroup
-        value={value.type}
-        exclusive
-        onChange={handleModeChange}
-        sx={{ mb: 2 }}
-        fullWidth
-      >
-        <ToggleButton value="country">País</ToggleButton>
-       <ToggleButton value="map">Mapa</ToggleButton> 
-      </ToggleButtonGroup> */}
        <Typography gutterBottom sx={{ color: "#333", fontWeight: 600 }}>
          País
         </Typography>
@@ -76,21 +61,19 @@ export default function PlaceCountryOrMap({ value, setValue }) {
             loading={loading}
             value={value.country || null}
             getOptionLabel={(option) => option.label || ""}
+            isOptionEqualToValue={(option, val) => option.code === val.code}
             onChange={(_, newValue) => {
                 setValue({
                 ...value,
                 country: newValue,
                 });
             }}
-            onInputChange={(_, newInputValue) => {
-                fetchCountries(newInputValue);
-            }}
             renderInput={(params) => (
                 <TextField
                 {...params}
                 label="Buscar país"
-                placeholder="Busque o nome do país em inglês"
-                Input={{
+                placeholder="Digite o nome do país"
+                InputProps={{
                     ...params.InputProps,
                     endAdornment: (
                     <>
@@ -103,10 +86,6 @@ export default function PlaceCountryOrMap({ value, setValue }) {
             )}
             />
       )}
-
-      {/* {value.type === "map" && (
-        <MapSelector value={value} setValue={setValue} />
-      )} */}
     </Box>
   );
 }
