@@ -3,7 +3,7 @@
 ; Para compilar: abra este .iss no Inno Setup Compiler e clique em Build
 
 #define AppName      "EcoLab"
-#define AppVersion   "0.1.2"
+#define AppVersion   "0.1.1"
 #define AppPublisher "AneSimoes"
 #define AppExeName   "EcoLab.exe"
 #define AppURL       ""
