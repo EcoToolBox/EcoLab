@@ -52,7 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EcoLab-Windows-Installer
-          path: EcoLab_Setup.exe
+          path: installer_output/EcoLab_Setup.exe
           retention-days: 30
           if-no-files-found: error
 
