@@ -23,7 +23,7 @@ AllowNoIcons=yes
 SetupIconFile=EcoLab.ico
 ; Pasta onde o instalador final será gerado
 OutputDir=installer_output
-OutputBaseFilename=EcoLab_Setup_v{#AppVersion}
+OutputBaseFilename=EcoLab_Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
