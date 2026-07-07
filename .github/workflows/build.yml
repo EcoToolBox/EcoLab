@@ -406,7 +406,7 @@ jobs:
 
   # ── Release: publica todos os instaladores ────────────────────────────────
   release:
-    needs: [build-windows, test-linux, test-macos]
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
