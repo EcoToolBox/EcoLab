@@ -81,7 +81,7 @@ def generate_model_maps(results: dict, total: pd.DataFrame, country: str, output
 
             im = ax.contourf(
                 lon_mesh, lat_mesh, prob_grid,
-                levels=50,
+                levels=np.linspace(0, 1, 51),   # níveis fixos de 0 a 1
                 cmap="Greens",
                 vmin=0, vmax=1,
                 zorder=2,
@@ -89,8 +89,14 @@ def generate_model_maps(results: dict, total: pd.DataFrame, country: str, output
             )
 
             country_shape.plot(ax=ax, color="none", edgecolor="black", linewidth=1.0, zorder=3)
+            print(total["presence"].dtype)
+            print(total["presence"].unique())
+            print((total["presence"] == 1).sum())
+            
+            presence_flag = pd.to_numeric(total["presence"], errors="coerce")
+            presences = total[presence_flag == 1]
+            print(f"Presenças encontradas para plot: {len(presences)}")
 
-            presences = total[total["presence"] == 1]
             ax.scatter(
                 presences["longitude"].astype(float), presences["latitude"].astype(float),
                 c="black", s=12, alpha=0.7, label="Presenças", zorder=4

@@ -9,7 +9,7 @@ def run_models(models: dict):
     modelsData      = models.get("modelsData", [])
     country         = models.get("country", [])
     points          = models.get("points", None)
-    country         = country.get("label", None)
+    country         = country.get("ingles", None)
 
     selected_models  = modelsData.get("selectedModels", [])
     presence_type    = modelsData.get("presenceType", [])
@@ -44,16 +44,15 @@ def run_models(models: dict):
 
         # Monta background com presence=0 usando o grid do país
         backgroundData["presence"] = 0
-        background_sample = backgroundData[features].copy()
-
-        # Combina presença real + background sintético
+        # background_sample = backgroundData[features].copy()
+        presence_cols = features + ["presence", "latitude", "longitude"]
         presence_only_df = pd.concat(
-            [finalData[features + ["presence"]], background_sample],
+            [finalData[presence_cols], backgroundData[presence_cols]],
             ignore_index=True
         )
         results["maxent"] = maxent.run(presence_only_df, features, selected_metrics)
         maps = create_model_maps.generate_model_maps(
-            results, backgroundData, country, species_name=selected_species_names
+            results, presence_only_df, country, species_name=selected_species_names
         )
         return maps
         
@@ -157,7 +156,3 @@ def run_models(models: dict):
             all_maps[f"{model_key}::{species_name}"] = map_data
 
     return all_maps
-
-
-def run_metrics(metrics: dict):
-    return "Running Metrics"
