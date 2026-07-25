@@ -1,4 +1,4 @@
-import { Box, Typography, OutlinedInput, InputLabel, FormControl, IconButton, Popover} from "@mui/material";
+import { Box, Typography, OutlinedInput, InputLabel, FormControl, IconButton, Popover, Button, Radio, RadioGroup} from "@mui/material";
 import {Visibility, VisibilityOff } from '@mui/icons-material';
 import { useState, useEffect} from "react";
 import FormGroup from '@mui/material/FormGroup';
@@ -9,8 +9,23 @@ import occurrenceApi from "../../services/occurrenceApi";
 
 const ALL_SOURCES = ["gbif", "inaturalist", "specieslink"];
 
-export default function SourcesCheckBox({selectedSources, setSelectedSources, sourceConfig, setSourceConfig}) {
+export default function SourcesCheckBox({
+    selectedSources, setSelectedSources, sourceConfig, setSourceConfig,
+    occurrenceMode, setOccurrenceMode, occurrenceUpload, setOccurrenceUpload,
+}) {
     const [showPassword, setShowPassword] = useState(false);
+
+    const handleFileSelect = (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        setOccurrenceUpload({
+            file,
+            fileName: file.name,
+            columns: [],
+            preview: [],
+            mapping: { species: "", latitude: "", longitude: "", eventDate: "" },
+        });
+    };
 
     useEffect(() => {
         occurrenceApi.checkIfKeyExists("gbif")
@@ -64,6 +79,36 @@ export default function SourcesCheckBox({selectedSources, setSelectedSources, so
     return (
         <Box>
             <FormGroup label="Fontes de Dados" style={{ color: "#333" }}>
+                <Typography gutterBottom style={{ fontWeight: 600 }}>
+                    Como você quer fornecer os dados de ocorrência?
+                </Typography>
+                <RadioGroup
+                    row
+                    value={occurrenceMode}
+                    onChange={(e) => setOccurrenceMode(e.target.value)}
+                    sx={{ mb: 1 }}
+                >
+                    <FormControlLabel value="sources" control={<Radio />} label="Usar as fontes que fornecemos" />
+                    <FormControlLabel value="upload" control={<Radio />} label="Subir minha própria planilha" />
+                    <FormControlLabel value="both" control={<Radio />} label="Usar os dois" />
+                </RadioGroup>
+
+                {(occurrenceMode === "upload" || occurrenceMode === "both") && (
+                    <Box sx={{ mb: 2 }}>
+                        <Button variant="outlined" component="label">
+                            {occurrenceUpload.fileName || "Selecionar planilha (CSV)"}
+                            <input type="file" accept=".csv,.tsv,.txt" hidden onChange={handleFileSelect} />
+                        </Button>
+                        {occurrenceUpload.fileName && (
+                            <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
+                                ✓ {occurrenceUpload.fileName} selecionado. Na próxima etapa você vai indicar quais colunas correspondem aos campos obrigatórios.
+                            </Typography>
+                        )}
+                    </Box>
+                )}
+
+              {(occurrenceMode === "sources" || occurrenceMode === "both") && (
+              <>
                 <Typography gutterBottom style={{ fontWeight: 600 }}>
                     Selecione as fontes de dados
                 </Typography>
@@ -194,6 +239,8 @@ export default function SourcesCheckBox({selectedSources, setSelectedSources, so
                         ✓ API key SpeciesLink já configurada
                     </Typography>
                 )}
+              </>
+              )}
             </FormGroup>
         </Box>
     );

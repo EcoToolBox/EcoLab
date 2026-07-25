@@ -2,6 +2,7 @@ import hashlib
 import json
 
 from shapely.strtree import STRtree
+from scipy.spatial import cKDTree
 from functools import lru_cache
 import pandas as pd
 import numpy as np
@@ -191,6 +192,43 @@ def fetch_interaction_presence(
         print(f"Erro ao buscar interações: {e}")
         return grid_df
 
+def attach_nearest_grid_features(
+    points_df: pd.DataFrame,
+    grid_df: pd.DataFrame,
+    feature_cols: list[str],
+) -> pd.DataFrame:
+    """
+    Anexa a `points_df` (ex: ocorrências) os valores das colunas em `feature_cols`
+    tirados do ponto de `grid_df` mais próximo (vizinho mais próximo por lat/long).
+
+    Usado quando o grid ambiental vem de uma planilha enviada pelo usuário: as
+    ocorrências não têm variáveis próprias, então herdam do ponto do grid mais
+    perto delas.
+    """
+    if points_df.empty or grid_df.empty or not feature_cols:
+        return points_df
+
+    points_df = points_df.copy()
+    valid_grid = grid_df.dropna(subset=["latitude", "longitude"]).reset_index(drop=True)
+    if valid_grid.empty:
+        return points_df
+
+    tree = cKDTree(valid_grid[["latitude", "longitude"]].to_numpy())
+    query_coords = points_df[["latitude", "longitude"]].apply(pd.to_numeric, errors="coerce")
+    valid_mask = query_coords.notna().all(axis=1)
+
+    _, nearest_idx = tree.query(query_coords[valid_mask].to_numpy(), k=1)
+
+    for col in feature_cols:
+        if col not in valid_grid.columns:
+            continue
+        if col not in points_df.columns:
+            points_df[col] = np.nan
+        points_df.loc[valid_mask, col] = valid_grid[col].to_numpy()[nearest_idx]
+
+    return points_df
+
+
 def _hash_args(*args) -> str:
     def safe_serialize(obj):
         if isinstance(obj, dict):
@@ -210,7 +248,22 @@ def generate_prediction_grid(
     selected_species: list[str] = None,
     occurrences: list[dict] = None,
     resolution_deg: float = RESOLUTION_DEG,
+    user_grid: pd.DataFrame = None,
 ) -> pd.DataFrame:
+    # Grid enviado pelo usuário (planilha com variáveis + lat/long cobrindo a
+    # área de interesse). Nesse caso não buscamos nada do GEE nem recortamos
+    # pelo shapefile do país — o grid é usado como veio; se a cobertura em
+    # relação ao país selecionado é parcial, isso é responsabilidade do
+    # usuário, não algo que o sistema tenta corrigir.
+    if user_grid is not None and not user_grid.empty:
+        grid_df = user_grid.reset_index(drop=True)
+        print(f"Grid enviado pelo usuário: {len(grid_df)} pontos, {len(grid_df.columns)} colunas.")
+
+        run_interactions = bool(interactions and selected_species)
+        if run_interactions:
+            grid_df = fetch_interaction_presence(grid_df, interactions, selected_species)
+
+        return grid_df.copy()
 
     cache_key = _hash_args(country, points, interactions, selected_species, occurrences, resolution_deg)
 

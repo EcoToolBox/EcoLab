@@ -1,6 +1,6 @@
 import {
   Box, Typography, Checkbox, FormControlLabel, FormGroup,
-  Button, Alert, TextField, CircularProgress,
+  Button, Alert, TextField, CircularProgress, Radio, RadioGroup,
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import StepActions from "../../components/StepActions";
@@ -21,10 +21,27 @@ export default function Environment({
   setSelectedEnv,
   geeProject,
   setGeeProject,
+  environmentMode,
+  setEnvironmentMode,
+  envUpload,
+  setEnvUpload,
 }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [authLoading,   setAuthLoading]   = useState(false);
   const [authError,     setAuthError]     = useState(null);
+
+  const handleFileSelect = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setEnvUpload({
+      file,
+      fileName: file.name,
+      columns: [],
+      mapping: { latitude: "", longitude: "" },
+      variables: [],
+      acknowledged: false,
+    });
+  };
 
   useEffect(() => {
     const cached = localStorage.getItem(GEE_PROJECT_CACHE_KEY);
@@ -35,7 +52,7 @@ export default function Environment({
   useEffect(() => {
     environmentApi
       .checkEEKey()
-      .then((result) => setAuthenticated(!!result))
+      .then((result) => setAuthenticated(result === true || result?.success === true))
       .catch(() => setAuthenticated(false));
   }, []);
 
@@ -44,7 +61,10 @@ export default function Environment({
     setAuthError(null);
     environmentApi
       .authenticateEE(project)
-      .then(() => {
+      .then((result) => {
+        if (!result?.success) {
+          throw new Error(result?.message ?? "Não foi possível autenticar no Earth Engine.");
+        }
         setAuthenticated(true);
         localStorage.setItem(GEE_PROJECT_CACHE_KEY, project);
       })
@@ -76,9 +96,14 @@ export default function Environment({
     setSelectedEnv(checked ? [...allVarNames] : []);
   };
 
-  const needsEE    = selectedEnv.some((e) => GEE_VARS.includes(e));
+  const usesSources = environmentMode === "sources" || environmentMode === "both";
+  const usesUpload  = environmentMode === "upload" || environmentMode === "both";
+
+  const needsEE    = usesSources && selectedEnv.some((e) => GEE_VARS.includes(e));
   const hasSelection = selectedEnv.length > 0;
-  const canProceed = hasSelection && (!needsEE || authenticated);
+  const sourcesReady = !usesSources || (hasSelection && (!needsEE || authenticated));
+  const uploadReady  = !usesUpload || (!!envUpload.file && !!envUpload.acknowledged);
+  const canProceed = sourcesReady && uploadReady;
 
   return (
     <Box>
@@ -90,6 +115,57 @@ export default function Environment({
         A busca será executada automaticamente na etapa de coleta de dados.
       </Typography>
 
+      <Typography gutterBottom style={{ fontWeight: 600, color: "#333" }}>
+        Como você quer fornecer as variáveis ambientais?
+      </Typography>
+      <RadioGroup
+        row
+        value={environmentMode}
+        onChange={(e) => setEnvironmentMode(e.target.value)}
+        sx={{ mb: 1, color: "#555"  }}
+      >
+        <FormControlLabel value="sources" control={<Radio />} label="Usar as fontes que fornecemos" />
+        <FormControlLabel value="upload" control={<Radio />} label="Subir minha própria planilha" />
+        <FormControlLabel value="both" control={<Radio />} label="Usar os dois" />
+      </RadioGroup>
+
+      {usesUpload && (
+        <Box sx={{ mb: 2 }}>
+          <Button variant="outlined" component="label">
+            {envUpload.fileName || "Selecionar planilha de variáveis (CSV)"}
+            <input type="file" accept=".csv,.tsv,.txt" hidden onChange={handleFileSelect} />
+          </Button>
+          {envUpload.fileName && (
+            <>
+              <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
+                ✓ {envUpload.fileName} selecionado. Na próxima etapa você vai indicar latitude, longitude e as variáveis.
+              </Typography>
+              <FormControlLabel
+                sx={{ mt: 1, alignItems: "flex-start" }}
+                control={
+                  <Checkbox
+                    checked={!!envUpload.acknowledged}
+                    onChange={(e) =>
+                      setEnvUpload((prev) => ({ ...prev, acknowledged: e.target.checked }))
+                    }
+                    sx={{ pt: 0 }}
+                  />
+                }
+                label={
+                  <Typography variant="body2" sx={{ color: "#333" }}>
+                    Entendo que sou responsável pela qualidade e cobertura dos dados ambientais
+                    enviados, e que problemas nesses dados podem gerar resultados que não refletem
+                    a realidade.
+                  </Typography>
+                }
+              />
+            </>
+          )}
+        </Box>
+      )}
+
+      {usesSources && (
+      <>
       {/* Selecionar todas */}
       <FormControlLabel
         sx={{ mb: 0.5 }}
@@ -180,15 +256,22 @@ export default function Environment({
           ✓ Google Earth Engine autenticado com sucesso.
         </Alert>
       )}
+      </>
+      )}
 
       <StepActions
         selectedSpecies={selectedSpecies}
         disableNext={!canProceed}
         disableHint={
-          !hasSelection
+          !uploadReady
+            ? !envUpload.file
+              ? "Selecione uma planilha com as variáveis ambientais para prosseguir."
+              : "Marque a confirmação de responsabilidade pelos dados para prosseguir."
+            : !hasSelection
             ? "Selecione ao menos uma variável ambiental."
             : "Autentique no Google Earth Engine para prosseguir."
         }
+        nextOverride={usesUpload ? "/environment-mapping" : undefined}
       />
     </Box>
   );

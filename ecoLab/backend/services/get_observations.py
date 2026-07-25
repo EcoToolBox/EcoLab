@@ -1,4 +1,28 @@
+from functools import lru_cache
+
 import ecoobs
+import ecoobs.gbif as ecoobs_gbif
+import pycountry
+
+
+@lru_cache(maxsize=256)
+def _country_to_iso2(country: str) -> str:
+    """Resolve o país localmente, sem depender do REST Countries durante a busca."""
+    normalized = str(country or "").strip()
+    if not normalized:
+        raise ValueError("Selecione um país válido para consultar o GBIF.")
+    if len(normalized) == 2 and normalized.isalpha():
+        return normalized.upper()
+    try:
+        return pycountry.countries.lookup(normalized).alpha_2
+    except LookupError as exc:
+        raise ValueError(f"País não reconhecido: {country}") from exc
+
+
+# ecoobs resolve o país via REST Countries sem validar a resposta. Quando esse
+# serviço externo retorna um objeto de erro, a biblioteca gera KeyError: 0.
+# Substituímos somente essa conversão por uma fonte local e determinística.
+ecoobs_gbif.getCountryCode = _country_to_iso2
 
 def get_autocomplete(speciesname:str):
     data = ecoobs.get_species_autocomplete(name=speciesname)
@@ -120,4 +144,4 @@ def search(occurrences: dict):
 
         return search_result.convert_dtypes().to_dict(orient="records")
     except Exception as e:
-        return {"success": False, "message": f"Search failed: {str(e)}"}
+        raise ValueError(f"Não foi possível buscar ocorrências: {e}") from e

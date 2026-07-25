@@ -1,6 +1,4 @@
-import threading
-import os
-import sys
+import math
 import ecoInteract
 import pandas as pd
 import ecoobs
@@ -53,7 +51,6 @@ def add_interaction_occurrence(interactions: dict, use_year: bool = True):
     specieslink = "specieslink" in selected_sources
     inaturalist = "inaturalist" in selected_sources
     radius_km = 50
-    radius_deg = radius_km / 111
 
     occurrences_df = pd.DataFrame(occurrences)
     selected_species_names = [s.get("name") for s in selected_species]
@@ -63,11 +60,31 @@ def add_interaction_occurrence(interactions: dict, use_year: bool = True):
         result = occurrences_df.convert_dtypes().to_dict(orient="records")
         return _serialize(result)
 
-    lats  = [float(r.get("latitude"))  for r in occurrences if r.get("latitude")]
-    lons  = [float(r.get("longitude")) for r in occurrences if r.get("longitude")]
-    years = [r.get("year")             for r in occurrences if r.get("year")]
-    lat_min = min(lats) - radius_deg;  lat_max = max(lats) + radius_deg
-    lon_min = min(lons) - radius_deg;  lon_max = max(lons) + radius_deg
+    coordinates = []
+    for record in occurrences:
+        try:
+            latitude = float(str(record.get("latitude", "")).replace(",", "."))
+            longitude = float(str(record.get("longitude", "")).replace(",", "."))
+        except (TypeError, ValueError):
+            continue
+        if -90 <= latitude <= 90 and -180 <= longitude <= 180:
+            coordinates.append((latitude, longitude))
+
+    if not coordinates:
+        # Não tenta calcular min/max de uma lista vazia; mantém os dados
+        # originais e deixa claro que não há como enriquecer as interações.
+        return _serialize(occurrences_df.convert_dtypes().to_dict(orient="records"))
+
+    lats = [lat for lat, _ in coordinates]
+    lons = [lon for _, lon in coordinates]
+    years = pd.to_numeric(pd.Series([r.get("year") for r in occurrences]), errors="coerce").dropna().astype(int).tolist()
+    lat_margin = radius_km / 111.32
+    lon_margin = max(
+        radius_km / max(111.32 * abs(math.cos(math.radians(lat))), 0.01)
+        for lat in lats
+    )
+    lat_min = min(lats) - lat_margin;  lat_max = max(lats) + lat_margin
+    lon_min = min(lons) - lon_margin;  lon_max = max(lons) + lon_margin
     year_min = year_max = None
     if use_year and years:
         year_min = min(years)
@@ -103,19 +120,24 @@ def add_interaction_occurrence(interactions: dict, use_year: bool = True):
 
     for interactor, target_types_map in interactor_map.items():
         col_name    = interactor_col_names[interactor]
-        species_occ = all_occ_df[all_occ_df["scientificName"].str.contains(interactor, case=False, na=False)]
+        species_occ = all_occ_df[
+            all_occ_df["scientificName"].astype(str).str.casefold() == str(interactor).casefold()
+        ]
         relevant_targets = set(target_types_map.keys())
         covers_all = relevant_targets >= set(selected_species_names)
 
         presences = []
         for record in occurrences:
-            lat  = float(record.get("latitude"))
-            lon  = float(record.get("longitude"))
-            year = record.get("year")
-
-            if lat is None or lon is None:
+            try:
+                lat = float(str(record.get("latitude", "")).replace(",", "."))
+                lon = float(str(record.get("longitude", "")).replace(",", "."))
+            except (TypeError, ValueError):
                 presences.append(None)
                 continue
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                presences.append(None)
+                continue
+            year = pd.to_numeric(pd.Series([record.get("year")]), errors="coerce").iloc[0]
 
             if not covers_all and species_col:
                 row_species = record.get(species_col, "")
@@ -123,11 +145,14 @@ def add_interaction_occurrence(interactions: dict, use_year: bool = True):
                     presences.append(None)
                     continue
 
+            lat_radius = radius_km / 111.32
+            lon_radius = radius_km / max(111.32 * abs(math.cos(math.radians(lat))), 0.01)
             nearby = species_occ[
-                (species_occ["year"] == year) &
-                (species_occ["latitude"].between(lat - radius_deg, lat + radius_deg)) &
-                (species_occ["longitude"].between(lon - radius_deg, lon + radius_deg))
+                species_occ["latitude"].between(lat - lat_radius, lat + lat_radius)
+                & species_occ["longitude"].between(lon - lon_radius, lon + lon_radius)
             ]
+            if use_year and pd.notna(year):
+                nearby = nearby[nearby["year"] == int(year)]
             presences.append(1 if not nearby.empty else 0)
 
         valid = sum(v for v in presences if v is not None)

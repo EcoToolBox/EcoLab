@@ -15,7 +15,10 @@ export function getBaseURL() {
 }
 
 async function handleResponse(res) {
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? body.message ?? `HTTP ${res.status}`);
+  }
   return res.json();
 }
 

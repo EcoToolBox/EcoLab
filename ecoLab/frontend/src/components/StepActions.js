@@ -1,6 +1,7 @@
 import { Box, Button, Tooltip } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import { useNavigate } from "react-router-dom";
 import { useStepNavigation } from "../hooks/useStepNavigation";
 
 const NEXT_BTN_SX = {
@@ -24,28 +25,44 @@ const BACK_BTN_SX = {
  * @param {boolean} disableNext  – disables the Next button
  * @param {string}  disableHint  – tooltip shown when Next is disabled
  * @param {Array}   selectedSpecies – persisted to localStorage on Next
+ * @param {string}  [nextOverride] – path to navigate to instead of the default next STEPS entry.
+ *                                   Needed for pages (like the column-mapping screens) that sit
+ *                                   outside the main STEPS array.
+ * @param {string}  [backOverride] – path to navigate to instead of the default previous STEPS entry.
  */
 export default function StepActions({
   disableNext = false,
   disableHint = "",
   selectedSpecies,
+  nextOverride,
+  backOverride,
 }) {
   const { goNext, goBack, isFirst, isLast } = useStepNavigation();
+  const navigate = useNavigate();
 
   const handleNext = () => {
     if (selectedSpecies) {
       localStorage.setItem("Selected Species", JSON.stringify(selectedSpecies));
     }
-    goNext();
+    if (nextOverride) navigate(nextOverride);
+    else goNext();
   };
+
+  const handleBack = () => {
+    if (backOverride) navigate(backOverride);
+    else goBack();
+  };
+
+  const showBack = backOverride ? true : !isFirst;
+  const showNext = nextOverride ? true : !isLast;
 
   return (
     <Box sx={{ display: "flex", justifyContent: "space-between", mt: 4 }}>
-      {!isFirst ? (
+      {showBack ? (
         <Button
           variant="outlined"
           startIcon={<ArrowBackIcon />}
-          onClick={goBack}
+          onClick={handleBack}
           sx={BACK_BTN_SX}
         >
           Voltar
@@ -54,7 +71,7 @@ export default function StepActions({
         <span />
       )}
 
-      {!isLast && (
+      {showNext && (
         <Tooltip title={disableNext ? disableHint : ""} placement="top">
           <span>
             <Button

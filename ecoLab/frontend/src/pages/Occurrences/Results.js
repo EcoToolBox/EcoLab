@@ -47,6 +47,8 @@ export default function OccurrenceResults({
   sourceConfig,
   place,
   years,
+  occurrenceMode,
+  occurrenceUpload,
   occurrenceData,
   setOccurrenceData,
 }) {
@@ -66,34 +68,53 @@ export default function OccurrenceResults({
     setLoading(true);
     setError(null);
     try {
-      const authPromises = [];
-      if (selectedSources.includes("gbif") && !sourceConfig.gbif.alreadyExists) {
-        authPromises.push(
-          occurrenceApi.authenticateGbif(sourceConfig.gbif).then((res) => {
-            if (!res?.success) console.warn("GBIF authentication issue:", res);
-          })
-        );
-      }
-      if (selectedSources.includes("specieslink") && !sourceConfig.specieslink.alreadyExists) {
-        authPromises.push(
-          occurrenceApi.authenticateSpeciesLink(sourceConfig.specieslink).then((res) => {
-            if (!res?.success) console.warn("SpeciesLink authentication issue:", res);
-          })
-        );
-      }
-      await Promise.all(authPromises);
+      const usesSources = occurrenceMode === "sources" || occurrenceMode === "both" || !occurrenceMode;
+      const usesUpload = occurrenceMode === "upload" || occurrenceMode === "both";
 
-      const result = await occurrenceApi.getOccurrences(
-        selectedSources,
-        selectedSpecies,
-        place.country,
-        years,
-        place.points
-      );
+      let sourcesData = [];
+      if (usesSources) {
+        const authPromises = [];
+        if (selectedSources.includes("gbif") && !sourceConfig.gbif.alreadyExists) {
+          authPromises.push(
+            occurrenceApi.authenticateGbif(sourceConfig.gbif).then((res) => {
+              if (!res?.success) console.warn("GBIF authentication issue:", res);
+            })
+          );
+        }
+        if (selectedSources.includes("specieslink") && !sourceConfig.specieslink.alreadyExists) {
+          authPromises.push(
+            occurrenceApi.authenticateSpeciesLink(sourceConfig.specieslink).then((res) => {
+              if (!res?.success) console.warn("SpeciesLink authentication issue:", res);
+            })
+          );
+        }
+        await Promise.all(authPromises);
 
-      const raw = result?.msg ?? result ?? result?.results ?? [];
-      const data = Array.isArray(raw) ? raw : Object.values(raw);
-      setOccurrenceData(withId(data));
+        const result = await occurrenceApi.getOccurrences(
+          selectedSources,
+          selectedSpecies,
+          place.country,
+          years,
+          place.points
+        );
+
+        const raw = result?.msg ?? result ?? result?.results ?? [];
+        sourcesData = Array.isArray(raw) ? raw : Object.values(raw);
+      }
+
+      let uploadData = [];
+      if (usesUpload && occurrenceUpload?.file) {
+        const uploadResult = await occurrenceApi.uploadOccurrences(
+          occurrenceUpload.file,
+          occurrenceUpload.mapping
+        );
+        if (uploadResult?.success === false) {
+          throw new Error((uploadResult.errors ?? []).join(" ") || "Falha ao processar a planilha enviada.");
+        }
+        uploadData = uploadResult?.data ?? [];
+      }
+
+      setOccurrenceData(withId([...sourcesData, ...uploadData]));
     } catch (err) {
       console.error("Erro ao buscar ocorrências:", err);
       setError(err.message ?? "Erro desconhecido ao buscar ocorrências.");

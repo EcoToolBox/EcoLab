@@ -412,11 +412,13 @@ export default function ModelResults({
   finalData,
   modelsData,
   place,
-  geeProject
+  geeProject,
+  envGridData,
 }) {
   const [loading, setLoading] = useState(false);
   const [maps,    setMaps]    = useState({});
   const [error,   setError]   = useState(null);
+  const [warnings, setWarnings] = useState([]);
   const hasFetched = useRef(false);
 
   useEffect(() => {
@@ -435,10 +437,12 @@ export default function ModelResults({
         country: place.country,
         points: place.points,
         modelsData,
-        geeProject
+        geeProject,
+        envGridData,
       })
       .then((result) => {
         setMaps(result?.maps ?? result ?? {});
+        setWarnings(result?.warnings ?? []);
       })
       .catch((err) => {
         console.error("Erro ao executar modelos:", err);
@@ -497,6 +501,11 @@ export default function ModelResults({
       </Box>
 
       <Box sx={{ display: "flex", flexDirection: "column" }}>
+        {warnings.length > 0 && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Alguns modelos não puderam ser executados: {warnings.join(" | ")}
+          </Alert>
+        )}
         {speciesEntries.map(([species, modelsMap], index) => (
           <SpeciesAccordion
             key={species}

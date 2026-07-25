@@ -40,7 +40,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-build.txt
           pip install pyinstaller
-          pyinstaller EcoLab.spec
+          pyinstaller build\EcoLab.spec
 
       - name: Build installer (Inno Setup)
         shell: pwsh
@@ -99,7 +99,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-build.txt
           pip install pyinstaller
-          pyinstaller EcoLab-Linux.spec
+          pyinstaller build\EcoLab-Linux.spec
 
       - name: Package .deb
         run: |
@@ -214,9 +214,8 @@ jobs:
           "
 
       - name: Run PyInstaller                   # ← troca para -m
-        run: python -m PyInstaller EcoLab-macOS.spec
+        run: python -m PyInstaller build\EcoLab-macOS.spec
 
-        
       - name: Test macOS executable startup
         run: |
           echo "=== ARCH ==="

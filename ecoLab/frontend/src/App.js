@@ -3,7 +3,9 @@ import { useState, useEffect } from "react";
 import MainLayout from "./layout/MainLayout";
 import SpeciesSearch from "./pages/SpeciesSearch";
 import Occurrences from "./pages/Occurrences";
+import OccurrenceColumnMapping from "./pages/Occurrences/ColumnMapping";
 import Environment from "./pages/Environment";
+import EnvColumnMapping from "./pages/Environment/ColumnMapping";
 import Interactions from "./pages/Environment/Interactions";
 import Models from "./pages/Models";
 import OccurrenceResults from "./pages/Occurrences/Results";
@@ -37,6 +39,16 @@ export default function App() {
   const [place, setPlace] = useState({ type: "country", country: "", points: [] });
   const [years, setYears] = useState([1800, currentYear]);
 
+  // ── Occurrence data source mode ("sources" | "upload" | "both") ──
+  const [occurrenceMode, setOccurrenceMode] = useState("sources");
+  const [occurrenceUpload, setOccurrenceUpload] = useState({
+    file: null,
+    fileName: "",
+    columns: [],
+    preview: [],
+    mapping: { species: "", latitude: "", longitude: "", eventDate: "" },
+  });
+
   // ── Interaction config ──
   const [interactionConfig, setInteractionConfig] = useState({
     selectedInteractions: [],
@@ -47,6 +59,16 @@ export default function App() {
   // ── Environment config ──
   const [selectedEnv, setSelectedEnv]   = useState([]);
   const [geeProject,  setGeeProject]    = useState("");
+
+  // ── Environment data source mode ("sources" | "upload" | "both") ──
+  const [environmentMode, setEnvironmentMode] = useState("sources");
+  const [envUpload, setEnvUpload] = useState({
+    file: null,
+    fileName: "",
+    columns: [],
+    mapping: { latitude: "", longitude: "" },
+    variables: [],
+  });
 
   // ── Models config ──
   const [modelsData, setModelsData] = useState({
@@ -59,13 +81,17 @@ export default function App() {
   const [occurrenceData,  setOccurrenceData]  = useState([]);
   const [interactionData, setInteractionData] = useState([]);
   const [finalData,       setFinalData]       = useState([]);
+  // Grid ambiental vindo da planilha do usuário (lat/long + variáveis cobrindo
+  // a área de interesse), usado como background/grid de predição no lugar do
+  // grid do país + GEE.
+  const [envGridData,     setEnvGridData]     = useState([]);
 
   const sharedProps = { selectedSpecies, setSelectedSpecies };
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<MainLayout {...sharedProps} />}>
+        <Route path="/" element={<MainLayout {...sharedProps} place={place} setPlace={setPlace} />}>
 
           <Route index element={<Home {...sharedProps} />} />
 
@@ -86,6 +112,20 @@ export default function App() {
                 setPlace={setPlace}
                 years={years}
                 setYears={setYears}
+                occurrenceMode={occurrenceMode}
+                setOccurrenceMode={setOccurrenceMode}
+                occurrenceUpload={occurrenceUpload}
+                setOccurrenceUpload={setOccurrenceUpload}
+              />
+            }
+          />
+
+          <Route path="occurrence-mapping"
+            element={
+              <OccurrenceColumnMapping
+                selectedSpecies={selectedSpecies}
+                occurrenceUpload={occurrenceUpload}
+                setOccurrenceUpload={setOccurrenceUpload}
               />
             }
           />
@@ -109,7 +149,21 @@ export default function App() {
                 setSelectedEnv={setSelectedEnv}
                 geeProject={geeProject}
                 setGeeProject={setGeeProject}
+                environmentMode={environmentMode}
+                setEnvironmentMode={setEnvironmentMode}
+                envUpload={envUpload}
+                setEnvUpload={setEnvUpload}
                 configOnly
+              />
+            }
+          />
+
+          <Route path="environment-mapping"
+            element={
+              <EnvColumnMapping
+                selectedSpecies={selectedSpecies}
+                envUpload={envUpload}
+                setEnvUpload={setEnvUpload}
               />
             }
           />
@@ -132,6 +186,8 @@ export default function App() {
                 sourceConfig={sourceConfig}
                 place={place}
                 years={years}
+                occurrenceMode={occurrenceMode}
+                occurrenceUpload={occurrenceUpload}
                 occurrenceData={occurrenceData}
                 setOccurrenceData={setOccurrenceData}
               />
@@ -151,6 +207,9 @@ export default function App() {
                 geeProject={geeProject}
                 finalData={finalData}
                 setFinalData={setFinalData}
+                environmentMode={environmentMode}
+                envUpload={envUpload}
+                setEnvGridData={setEnvGridData}
               />
             }
           />
@@ -164,6 +223,7 @@ export default function App() {
                 modelsData={modelsData}
                 place={place}
                 geeProject={geeProject}
+                envGridData={envGridData}
               />
             }
           />

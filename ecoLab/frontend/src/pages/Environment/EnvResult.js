@@ -19,6 +19,10 @@ const PHASE_MESSAGES = {
     "Processando índices de vegetação e clima...",
     "Quase lá! Calculando as variáveis ambientais...",
   ],
+  grid: [
+    "Processando a planilha de variáveis ambientais...",
+    "Montando o grid ambiental enviado por você...",
+  ],
   joining: [
     "Cruzando ocorrências com dados das espécies interatoras...",
     "Montando a tabela final de presença/ausência...",
@@ -73,11 +77,16 @@ export default function EnvResult({
   interactionConfig,
   setInteractionData,
   selectedEnv,
+  geeProject,
   finalData,
   setFinalData,
+  environmentMode,
+  envUpload,
+  setEnvGridData,
 }) {
   const [phase, setPhase] = useState(null);
   const [error, setError] = useState(null);
+  const [uploadedGrid, setUploadedGrid] = useState([]);
   const hasFetched = useRef(false);
 
   useEffect(() => {
@@ -107,8 +116,44 @@ export default function EnvResult({
         const result = await environmentApi.getEnvVariables({
           data: occurrenceData,
           index: selectedEnv,
+          geeProject,
         });
         enrichedOccurrences = withId(parseResult(result));
+        setOccurrenceData(enrichedOccurrences);
+      }
+
+      const usesUpload = environmentMode === "upload" || environmentMode === "both";
+      if (usesUpload && envUpload?.file) {
+        setPhase("grid");
+        const selectedVariables = (envUpload.variables ?? [])
+          .filter((v) => v.selected)
+          .map((v) => ({ column: v.column, name: v.name }));
+        if (selectedVariables.length === 0) {
+          throw new Error("Selecione ao menos uma variável ambiental na etapa de mapeamento.");
+        }
+        const uploadResult = await environmentApi.uploadEnvironment(
+          envUpload.file,
+          envUpload.mapping,
+          selectedVariables
+        );
+        if (uploadResult?.success === false) {
+          throw new Error((uploadResult.errors ?? []).join(" ") || "Falha ao processar a planilha de variáveis ambientais.");
+        }
+        const gridData = uploadResult?.data ?? [];
+        if (gridData.length === 0) {
+          throw new Error(
+            (uploadResult?.errors ?? []).join(" ") ||
+            "A planilha ambiental não possui linhas válidas após a importação."
+          );
+        }
+        setUploadedGrid(gridData);
+        setEnvGridData?.(gridData);
+
+        // A tabela final representa ocorrências, não a grade inteira. Para
+        // mostrar e usar as variáveis enviadas, cada ocorrência recebe os
+        // valores do ponto ambiental mais próximo.
+        const attached = await environmentApi.attachGrid(enrichedOccurrences, gridData);
+        enrichedOccurrences = withId(parseResult(attached));
         setOccurrenceData(enrichedOccurrences);
       }
 
@@ -150,9 +195,10 @@ export default function EnvResult({
           {[
             { key: "interactions", label: "Interações" },
             { key: "environment",  label: "Variáveis Ambientais" },
+            { key: "grid",         label: "Grid do Usuário" },
             { key: "joining",      label: "Tabela Final" },
           ].map(({ key, label }) => {
-            const phases = ["interactions", "environment", "joining"];
+            const phases = ["interactions", "environment", "grid", "joining"];
             const currentIdx = phases.indexOf(phase);
             const stepIdx    = phases.indexOf(key);
             const isDone     = stepIdx < currentIdx;
@@ -227,6 +273,13 @@ export default function EnvResult({
         <Box sx={{ height: 500, width: "100%", mb: 2 }}>
           <DataGrid rows={finalData} columns={columns} />
         </Box>
+      )}
+
+      {uploadedGrid.length > 0 && (
+        <Alert severity="success" sx={{ mt: 2 }}>
+          Grade ambiental carregada: {uploadedGrid.length} pontos. As variáveis foram associadas
+          a cada ocorrência pelo ponto ambiental mais próximo e serão usadas na modelagem.
+        </Alert>
       )}
 
       <StepActions selectedSpecies={selectedSpecies} />
