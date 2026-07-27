@@ -1,136 +1,176 @@
 <div align="center">
-  <img src="ecoLab/frontend/public/favicon.ico" width="80" alt="EcoLab Logo"/>
-  <h1>EcoLab</h1>
-  <p>Ferramenta desktop para modelagem de distribuição potencial de espécies,<br/>integrando dados de ocorrência, variáveis ambientais e interações bióticas.</p>
 
-  ![License](https://img.shields.io/badge/license-MIT-green)
-  ![Python](https://img.shields.io/badge/python-3.11-blue)
-  ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
-  ![Build](https://github.com/EcoToolBox/EcoLab/actions/workflows/build.yml/badge.svg)
+# 🖥️ EcoLab
+
+### Desktop application for Species Distribution Modeling
+
+*An open-source platform that automates biodiversity data collection, environmental variable extraction, and species distribution modeling.*
+
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.11+-blue)
+![React](https://img.shields.io/badge/React-Frontend-61DAFB?logo=react)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi)
+
+Part of the **EcoToolBox** ecosystem 🌿
+
 </div>
 
 ---
 
-## Sobre
+# ✨ Overview
 
-O EcoLab é uma aplicação desktop desenvolvida como parte de uma dissertação de mestrado no **PPGCA — UTFPR**. O objetivo é oferecer aos biólogos uma ferramenta acessível e integrada para análise de dados ecológicos, desde a coleta de ocorrências até a geração de mapas de distribuição potencial.
+**EcoLab** is an open-source desktop application designed to simplify **Species Distribution Modeling (SDM)**.
 
-## Funcionalidades
+Instead of manually collecting biodiversity records, environmental variables, and ecological interactions from multiple sources, EcoLab integrates the entire workflow into a single application.
 
-- **Busca de ocorrências** — integração com iNaturalist, GBIF e SpeciesLink
-- **Variáveis ambientais** — coleta automática via Google Earth Engine (WorldClim, Sentinel-2)
-- **Interações bióticas** — busca no Global Biotic Interactions (GloBI)
-- **Modelos de distribuição** — MaxEnt, GAM, Random Forest, SVM e BRT
-- **Mapas de predição** — geração automática de mapas de distribuição potencial por país
-- **Exportação** — resultados exportáveis em CSV e imagens PNG
-
-## Download
-
-Acesse a [página de releases](../../releases/latest) para baixar o instalador da versão mais recente.
-
-| Sistema | Arquivo |
-|---|---|
-| Windows | `EcoLab.exe` |
-| Linux | `EcoLab` |
-
-## Instalação
-
-### Windows
-1. Baixe o instalador `EcoLab_Setup_v*.exe`
-2. Execute como administrador
-3. Siga o assistente de instalação
-4. O EcoLab será instalado em `Program Files\EcoLab`
-
-> Na primeira execução, o banco de dados do GloBI será baixado automaticamente em segundo plano (~20–30 min). Você pode usar as outras funcionalidades normalmente enquanto aguarda.
-
-### Linux
-1. Baixe o executável `EcoLab`
-2. Dê permissão de execução:
-```bash
-chmod +x EcoLab
-./EcoLab
-```
-
-## Pré-requisitos
-
-### Google Earth Engine
-Para usar as variáveis ambientais é necessário ter uma conta no [Google Earth Engine](https://earthengine.google.com/) com um projeto no Google Cloud configurado.
-
-1. Acesse [console.cloud.google.com](https://console.cloud.google.com)
-2. Crie ou selecione um projeto
-3. Copie o **Project ID**
-4. Na tela de autenticação do EcoLab, cole o Project ID e clique em autenticar
-
-## Fluxo de uso
-
-```
-1. Selecionar espécies
-        ↓
-2. Configurar fontes de ocorrência (GBIF, iNaturalist, SpeciesLink)
-        ↓
-3. Configurar interações bióticas (GloBI)
-        ↓
-4. Configurar variáveis ambientais (GEE)
-        ↓
-5. Selecionar modelos e métricas
-        ↓
-6. Visualizar mapas de distribuição potencial
-```
-
-## Stack
-
-| Camada | Tecnologia |
-|---|---|
-| Backend | Python 3.11 + FastAPI + Uvicorn |
-| Frontend | React + Material UI |
-| Dados de ocorrência | iNaturalist, GBIF, SpeciesLink |
-| Variáveis ambientais | Google Earth Engine |
-| Interações bióticas | GloBI (DuckDB) |
-| Modelos | scikit-learn (MaxEnt, Random Forest, SVM, BRT), pygam (GAM) |
-| Geodados | GeoPandas, PyOGRIO, Shapely |
-| Empacotamento | PyInstaller + Inno Setup |
-
-## Desenvolvimento
-
-```bash
-# Clonar o repositório
-git clone https://github.com/EcoToolBox/EcoLab
-
-# Criar ambiente virtual
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-source .venv/bin/activate  # Linux
-
-# Instalar dependências
-pip install -r requirements.txt
-
-# Iniciar o backend
-cd scripts
-python run_exe.py
-
-# Iniciar o frontend (outro terminal)
-cd ecoLab/frontend
-npm install
-npm start
-```
-
-## Build
-
-```bash
-# Gerar executável
-pyinstaller EcoLab.spec          # Windows
-pyinstaller EcoLab-Linux.spec    # Linux
-
-```
-
-O build também é executado automaticamente via GitHub Actions a cada push na branch `main`.
-
-## Licença
-
-Distribuído sob a licença MIT. Veja [LICENSE](LICENSE) para mais informações.
+The platform enables researchers to retrieve occurrence records, extract environmental variables, train machine learning models, and generate habitat suitability maps with minimal manual effort.
 
 ---
 
-<div align="center">
-  Desenvolvido no <strong>PPGCA — UTFPR</strong>
-</div>
+# 🚀 Features
+
+- 🦋 Retrieve species occurrence records
+- 🌎 Download environmental variables
+- 🌿 Extract NDVI and NDWI from Sentinel-2
+- 🌡️ Retrieve climate variables from WorldClim
+- 🌐 Query ecological interactions from GloBI
+- 🤖 Train Species Distribution Models
+- 🗺️ Generate habitat suitability maps
+- 📊 Interactive desktop interface
+
+---
+
+# 🧩 EcoToolBox Ecosystem
+
+EcoLab integrates the other projects in the EcoToolBox ecosystem.
+
+| Project | Purpose |
+|---------|---------|
+| 🌍 EcoEnv | Environmental variables |
+| 🦋 EcoObs | Species occurrence records |
+| 🌿 EcoInteract | Ecological interactions |
+
+---
+
+# 🏗️ Architecture
+
+```text
+                User
+                  │
+                  ▼
+             React Frontend
+                  │
+                  ▼
+           FastAPI Backend
+                  │
+    ┌─────────────┼─────────────┐
+    │             │             │
+    ▼             ▼             ▼
+ EcoObs       EcoEnv      EcoInteract
+    │             │             │
+    └─────────────┼─────────────┘
+                  ▼
+      Species Distribution Models
+                  ▼
+      Habitat Suitability Maps
+```
+
+---
+
+# 🔬 Data Sources
+
+EcoLab integrates data from internationally recognized biodiversity repositories.
+
+| Source | Purpose |
+|---------|---------|
+| GBIF | Species occurrence records |
+| iNaturalist | Citizen science observations |
+| SpeciesLink | Brazilian biodiversity records |
+| Sentinel-2 | NDVI and NDWI |
+| WorldClim | Climate variables |
+| GloBI | Ecological interactions |
+
+---
+
+# 🤖 Machine Learning
+
+EcoLab currently supports several machine learning algorithms for Species Distribution Modeling, including:
+
+- Random Forest
+- MaxEnt
+- Logistic Regression
+- Support for additional algorithms through scikit-learn
+
+---
+
+# 💻 Technology Stack
+
+### Backend
+
+- Python
+- FastAPI
+- Uvicorn
+
+### Frontend
+
+- React
+- Material UI
+
+### Data Science
+
+- Pandas
+- GeoPandas
+- NumPy
+- Scikit-learn
+
+### Geospatial
+
+- Rasterio
+- Shapely
+- Google Earth Engine
+
+---
+
+# 📷 Screenshots
+
+> Screenshots will be added soon.
+
+---
+
+# 📄 Scientific Publications
+
+EcoLab has been developed as part of a Master's research project in Applied Computing at UTFPR and has been presented in peer-reviewed scientific publications.
+
+---
+
+# 📦 Installation
+
+Pre-built installers are available through the GitHub Releases page.
+
+Supported platforms:
+
+- Windows
+- Linux
+- macOS
+
+---
+
+# 🌱 Related Projects
+
+- 🌍 EcoEnv
+- 🦋 EcoObs
+- 🌿 EcoInteract
+
+---
+
+# 🤝 Contributing
+
+Contributions are welcome.
+
+Feel free to open issues or submit pull requests.
+
+---
+
+# 📜 License
+
+MIT License.
