@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+
+title: EcoLab
+
+message: "If you use EcoLab in your research, please cite this software."
+
+type: software
+
+authors:
+  - family-names: Simões
+    given-names: Ane Carolina
+    orcid: "https://orcid.org/0009-0005-6533-0961"
+
+abstract: >
+  EcoLab is an open-source desktop application for Species Distribution
+  Modeling that integrates biodiversity occurrence records,
+  environmental variables, ecological interactions, and machine learning
+  into a unified workflow.
+
+repository-code: "https://github.com/EcoToolBox/EcoLab"
+
+url: "https://github.com/EcoToolBox/EcoLab"
+
+license: MIT
+
+keywords:
+  - species distribution modeling
+  - biodiversity
+  - biodiversity informatics
+  - ecology
+  - machine learning
+  - geospatial
+  - google earth engine
+  - fastapi
+  - react
+  - python
