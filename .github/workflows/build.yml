@@ -47,7 +47,8 @@ jobs:
         run: choco install innosetup --no-progress -y
       - name: Build installer
         shell: pwsh
-        run: & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" EcoLab_Installer.iss
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" EcoLab_Installer.iss
       - uses: actions/upload-artifact@v4
         with:
           name: EcoLab-Windows-Installer
