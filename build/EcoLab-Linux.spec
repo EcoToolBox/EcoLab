@@ -209,7 +209,7 @@ hiddenimports += [
 ]
 
 a = Analysis(
-    [os.path.join(os.path.dirname(SPECPATH), 'scripts', 'run.py')],
+    [os.path.join(os.path.dirname(SPECPATH), 'scripts', 'run_exe.py')],
     pathex=['.'],
     binaries=binaries,
     datas=datas,
