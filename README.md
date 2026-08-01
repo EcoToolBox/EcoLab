@@ -1,136 +1,123 @@
 <div align="center">
-  <img src="ecoLab/frontend/public/favicon.ico" width="80" alt="EcoLab Logo"/>
+  <img src="ecoLab/frontend/public/favicon.ico" width="88" alt="EcoLab logo" />
   <h1>EcoLab</h1>
-  <p>Ferramenta desktop para modelagem de distribuição potencial de espécies,<br/>integrando dados de ocorrência, variáveis ambientais e interações bióticas.</p>
+  <p><strong>Modelagem de distribuição potencial de espécies, sem complicação.</strong></p>
+  <p>Dados de ocorrência, ambiente e interações biológicas em um único fluxo de trabalho.</p>
 
-  ![License](https://img.shields.io/badge/license-MIT-green)
-  ![Python](https://img.shields.io/badge/python-3.11-blue)
-  ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
-  ![Build](https://github.com/EcoToolBox/EcoLab/actions/workflows/build.yml/badge.svg)
+  [![Build](https://github.com/EcoToolBox/EcoLab/actions/workflows/build.yml/badge.svg)](https://github.com/EcoToolBox/EcoLab/actions/workflows/build.yml)
+  ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+  ![Platforms](https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20macOS-available-2E7D32)
+  [![License](https://img.shields.io/badge/license-MIT-5E9E4A)](LICENSE)
 </div>
 
 ---
 
-## Sobre
+## Comece em poucos minutos
 
-O EcoLab é uma aplicação desktop desenvolvida como parte de uma dissertação de mestrado no **PPGCA — UTFPR**. O objetivo é oferecer aos biólogos uma ferramenta acessível e integrada para análise de dados ecológicos, desde a coleta de ocorrências até a geração de mapas de distribuição potencial.
+1. Baixe o instalador apropriado na [página de releases](../../releases/latest).
+2. Instale ou mova o EcoLab para a pasta de aplicativos do seu sistema.
+3. Abra o programa e siga o fluxo: espécies → ocorrências → ambiente → modelos → resultados.
 
-## Funcionalidades
+| Sistema | Arquivo para baixar | Instalação |
+|---|---|---|
+| Windows | `EcoLab_Setup.exe` | Execute o instalador e siga o assistente. |
+| Linux (Debian/Ubuntu) | `EcoLab-Linux.deb` | Abra o arquivo ou use `sudo apt install ./EcoLab-Linux.deb`. |
+| macOS Intel | `EcoLab-macOS-intel.dmg` | Abra o DMG e arraste o EcoLab para **Aplicativos**. |
+| macOS Apple Silicon | `EcoLab-macOS-apple-silicon.dmg` | Abra o DMG e arraste o EcoLab para **Aplicativos**. |
 
-- **Busca de ocorrências** — integração com iNaturalist, GBIF e SpeciesLink
-- **Variáveis ambientais** — coleta automática via Google Earth Engine (WorldClim, Sentinel-2)
-- **Interações bióticas** — busca no Global Biotic Interactions (GloBI)
-- **Modelos de distribuição** — MaxEnt, GAM, Random Forest, SVM e BRT
-- **Mapas de predição** — geração automática de mapas de distribuição potencial por país
-- **Exportação** — resultados exportáveis em CSV e imagens PNG
+> Na primeira abertura, o macOS pode pedir confirmação do Gatekeeper. Clique com o botão direito no EcoLab, escolha **Abrir** e confirme. Não é necessário desativar a proteção do sistema.
 
-## Download
-
-Acesse a [página de releases](../../releases/latest) para baixar o instalador da versão mais recente.
-
-| Sistema | Arquivo |
-|---|---|
-| Windows | `EcoLab.exe` |
-| Linux | `EcoLab` |
-
-## Instalação
-
-### Windows
-1. Baixe o instalador `EcoLab_Setup_v*.exe`
-2. Execute como administrador
-3. Siga o assistente de instalação
-4. O EcoLab será instalado em `Program Files\EcoLab`
-
-> Na primeira execução, o banco de dados do GloBI será baixado automaticamente em segundo plano (~20–30 min). Você pode usar as outras funcionalidades normalmente enquanto aguarda.
-
-### Linux
-1. Baixe o executável `EcoLab`
-2. Dê permissão de execução:
-```bash
-chmod +x EcoLab
-./EcoLab
-```
-
-## Pré-requisitos
+## Antes da primeira análise
 
 ### Google Earth Engine
-Para usar as variáveis ambientais é necessário ter uma conta no [Google Earth Engine](https://earthengine.google.com/) com um projeto no Google Cloud configurado.
 
-1. Acesse [console.cloud.google.com](https://console.cloud.google.com)
-2. Crie ou selecione um projeto
-3. Copie o **Project ID**
-4. Na tela de autenticação do EcoLab, cole o Project ID e clique em autenticar
+As variáveis ambientais automáticas exigem uma conta no [Google Earth Engine](https://earthengine.google.com/) e um projeto do Google Cloud.
 
-## Fluxo de uso
+1. Crie ou selecione um projeto em [console.cloud.google.com](https://console.cloud.google.com).
+2. Copie o **ID do projeto**.
+3. No EcoLab, em **Ambiente**, informe o ID e conclua a autenticação no navegador.
 
-```
-1. Selecionar espécies
-        ↓
-2. Configurar fontes de ocorrência (GBIF, iNaturalist, SpeciesLink)
-        ↓
-3. Configurar interações bióticas (GloBI)
-        ↓
-4. Configurar variáveis ambientais (GEE)
-        ↓
-5. Selecionar modelos e métricas
-        ↓
-6. Visualizar mapas de distribuição potencial
+Você também pode enviar sua própria grade ambiental em CSV, sem usar o Earth Engine.
+
+### Formato de planilhas
+
+Para evitar problemas de importação, prefira CSV separado por `;` e decimais com ponto:
+
+```csv
+latitude;longitude;temperatura
+-19.963668;-44.199772;23.4
 ```
 
-## Stack
+O EcoLab também reconhece tabulação e vírgula como separador, bem como ponto ou vírgula decimal nas coordenadas.
 
-| Camada | Tecnologia |
-|---|---|
-| Backend | Python 3.11 + FastAPI + Uvicorn |
-| Frontend | React + Material UI |
-| Dados de ocorrência | iNaturalist, GBIF, SpeciesLink |
-| Variáveis ambientais | Google Earth Engine |
-| Interações bióticas | GloBI (DuckDB) |
-| Modelos | scikit-learn (MaxEnt, Random Forest, SVM, BRT), pygam (GAM) |
-| Geodados | GeoPandas, PyOGRIO, Shapely |
-| Empacotamento | PyInstaller + Inno Setup |
+## O que o EcoLab faz
+
+- Busca ocorrências em GBIF, iNaturalist e SpeciesLink.
+- Aceita planilhas próprias de ocorrências e de variáveis ambientais.
+- Consulta interações biológicas no GloBI.
+- Obtém NDVI, NDWI, temperatura e precipitação via Google Earth Engine.
+- Executa MaxEnt, GAM, Random Forest, SVM e BRT.
+- Gera mapas de distribuição potencial e exporta resultados em CSV e PNG.
+
+## Fluxo de trabalho
+
+```text
+Espécies → Ocorrências → Interações → Ambiente → Modelos → Resultados
+```
+
+Na seleção de espécies, você pode pesquisar uma por vez, navegar pela árvore taxonômica ou colar uma lista de nomes científicos.
 
 ## Desenvolvimento
 
-```bash
-# Clonar o repositório
-git clone https://github.com/EcoToolBox/EcoLab
+### Pré-requisitos
 
-# Criar ambiente virtual
+- Python 3.11
+- Node.js 20
+- Git
+
+No Linux e macOS, as bibliotecas geoespaciais do sistema podem ser necessárias para construir o aplicativo.
+
+### Inicialização local
+
+```bash
+git clone https://github.com/EcoToolBox/EcoLab.git
+cd EcoLab
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-source .venv/bin/activate  # Linux
-
-# Instalar dependências
-pip install -r requirements.txt
-
-# Iniciar o backend
-cd scripts
-python run_exe.py
-
-# Iniciar o frontend (outro terminal)
-cd ecoLab/frontend
-npm install
-npm start
 ```
 
-## Build
+Ative o ambiente virtual:
 
 ```bash
-# Gerar executável
-pyinstaller EcoLab.spec          # Windows
-pyinstaller EcoLab-Linux.spec    # Linux
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
 
+# macOS / Linux
+source .venv/bin/activate
 ```
 
-O build também é executado automaticamente via GitHub Actions a cada push na branch `main`.
+Instale as dependências e inicie os dois serviços:
+
+```bash
+pip install -r requirements.txt
+cd ecoLab/frontend && npm ci && cd ../..
+python scripts/run.py
+```
+
+O navegador abre em `http://localhost:3000`. Para não abrir automaticamente, defina `ECOLAB_OPEN_BROWSER=0` antes de iniciar.
+
+## Builds e qualidade
+
+Cada alteração em `main` e cada pull request executam o GitHub Actions, que:
+
+1. constrói o frontend com dependências travadas (`npm ci`);
+2. gera instaladores para Windows, Linux e macOS (Intel e Apple Silicon);
+3. instala e inicia os pacotes Linux e macOS em ambientes limpos;
+4. só publica a release quando todos os testes de inicialização passam.
+
+## Sobre
+
+O EcoLab é desenvolvido no PPGCA — UTFPR como parte de uma dissertação de mestrado, com foco em tornar análises ecológicas mais acessíveis e reprodutíveis.
 
 ## Licença
 
-Distribuído sob a licença MIT. Veja [LICENSE](LICENSE) para mais informações.
-
----
-
-<div align="center">
-  Desenvolvido no <strong>PPGCA — UTFPR</strong>
-</div>
+Distribuído sob a licença [MIT](LICENSE).

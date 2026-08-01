@@ -1,15 +1,15 @@
 import subprocess
+import platform
 
 import matplotlib
 matplotlib.use("Agg")
 
-import sys
-import os
 import threading
 import webbrowser
 import socket
 import sys
 import os
+
 
 from pathlib import Path
 from diskcache import Cache
@@ -62,12 +62,19 @@ def catch_all(full_path: str):
 
 
 def open_browser():
-    webbrowser.open("http://localhost:8000")
+    if os.environ.get("ECOLAB_OPEN_BROWSER", "1") != "0":
+        webbrowser.open("http://localhost:8000")
 
 def kill_port(port: int):
+    """Libera a porta no Windows; macOS e Linux não executam comandos cmd.exe."""
+    if platform.system() != "Windows":
+        return
     subprocess.run(
-        f'for /f "tokens=5" %a in (\'netstat -ano ^| findstr :{port}\') do taskkill /F /PID %a',
-        shell=True, capture_output=True
+        ["powershell", "-NoProfile", "-Command",
+         f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | "
+         "ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }"],
+        capture_output=True,
+        check=False,
     )
     
 if __name__ == "__main__":
@@ -81,4 +88,5 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
     finally:
-        input("\nPressione Enter para fechar...")
+        if getattr(sys, "frozen", False) and platform.system() == "Windows":
+            input("\nPressione Enter para fechar...")

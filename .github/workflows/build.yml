@@ -2,442 +2,202 @@ name: Build EcoLab
 
 on:
   push:
-    branches: ["main"]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+
 jobs:
-  # ── Windows: PyInstaller + Inno Setup ──────────────────────────────────────
   build-windows:
+    name: Windows installer
     runs-on: windows-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: ${{ env.PYTHON_VERSION }} }
+      - uses: actions/setup-node@v4
+        with: { node-version: ${{ env.NODE_VERSION }}, cache: npm, cache-dependency-path: ecoLab/frontend/package-lock.json }
       - name: Build frontend
-        run: |
-          cd ecoLab/frontend
-          npm install
-          npm run build
-        env:
-          CI: false
-
-      - name: Create required directories
-        run: mkdir -p ecoLab/maps
-
-      - name: Build executable (PyInstaller)
+        working-directory: ecoLab/frontend
+        run: npm ci && npm run build
+        env: { CI: "false" }
+      - name: Prepare build directories
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path ecoLab/maps | Out-Null
+      - name: Build executable
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-build.txt
-          pip install pyinstaller
-          pyinstaller build\EcoLab.spec
-
-      - name: Build installer (Inno Setup)
+          pip install -r requirements-build.txt pyinstaller
+          python -m PyInstaller build/EcoLab.spec
+      - name: Install Inno Setup
         shell: pwsh
-        run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc "${{ github.workspace }}\EcoLab_Installer.iss"
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        run: choco install innosetup --no-progress -y
+      - name: Build installer
+        shell: pwsh
+        run: & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" EcoLab_Installer.iss
+      - uses: actions/upload-artifact@v4
         with:
           name: EcoLab-Windows-Installer
           path: installer_output/EcoLab_Setup.exe
-          retention-days: 30
           if-no-files-found: error
 
-  # ── Linux: PyInstaller + pacote .deb ───────────────────────────────────────
   build-linux:
+    name: Linux package
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgdal-dev gdal-bin \
-            libgeos-dev libproj-dev \
-            libspatialindex-dev \
-            python3-dev build-essential
-
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: ${{ env.PYTHON_VERSION }} }
+      - uses: actions/setup-node@v4
+        with: { node-version: ${{ env.NODE_VERSION }}, cache: npm, cache-dependency-path: ecoLab/frontend/package-lock.json }
+      - name: Install geospatial libraries
+        run: sudo apt-get update && sudo apt-get install -y libgdal-dev gdal-bin libgeos-dev libproj-dev libspatialindex-dev
       - name: Build frontend
+        working-directory: ecoLab/frontend
+        run: npm ci && npm run build
+        env: { CI: "false" }
+      - name: Build executable
         run: |
-          cd ecoLab/frontend
-          npm install
-          npm run build
-        env:
-          CI: false
-
-      - name: Create required directories
-        run: mkdir -p ecoLab/maps
-
-      - name: Build executable (PyInstaller)
-        run: |
+          mkdir -p ecoLab/maps
           python -m pip install --upgrade pip
-          pip install -r requirements-build.txt
-          pip install pyinstaller
-          pyinstaller build\EcoLab-Linux.spec
-
+          pip install -r requirements-build.txt pyinstaller
+          python -m PyInstaller build/EcoLab-Linux.spec
       - name: Package .deb
         run: |
-          PKG=ecolab_0.1.1_amd64
-          mkdir -p $PKG/DEBIAN
-          mkdir -p $PKG/opt/ecolab
-          mkdir -p $PKG/usr/share/applications
-          mkdir -p $PKG/usr/share/icons/hicolor/256x256/apps
-
-          cp dist/EcoLab $PKG/opt/ecolab/EcoLab
-          chmod +x $PKG/opt/ecolab/EcoLab
-
-          if [ -f EcoLab.png ]; then
-            cp EcoLab.png $PKG/usr/share/icons/hicolor/256x256/apps/ecolab.png
-          fi
-
-          cat > $PKG/DEBIAN/control << 'CTRL'
-          Package: ecolab
-          Version: 0.1.1
-          Section: science
-          Priority: optional
-          Architecture: amd64
-          Maintainer: UTFPR
-          Description: EcoLab - Ecological Analysis Tool
-          CTRL
-
-          cat > $PKG/usr/share/applications/ecolab.desktop << 'DESK'
-          [Desktop Entry]
-          Name=EcoLab
-          Exec=/opt/ecolab/EcoLab
-          Icon=ecolab
-          Type=Application
-          Categories=Science;Education;
-          Terminal=false
-          DESK
-
-          dpkg-deb --build $PKG EcoLab-Linux.deb
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+          pkg=ecolab_0.1.1_amd64
+          mkdir -p "$pkg/DEBIAN" "$pkg/opt/ecolab" "$pkg/usr/share/applications" "$pkg/usr/share/icons/hicolor/256x256/apps"
+          cp dist/EcoLab "$pkg/opt/ecolab/EcoLab"
+          chmod +x "$pkg/opt/ecolab/EcoLab"
+          cp ecoLab/frontend/src/assets/EcoLab.png "$pkg/usr/share/icons/hicolor/256x256/apps/ecolab.png"
+          printf 'Package: ecolab\nVersion: 0.1.1\nSection: science\nPriority: optional\nArchitecture: amd64\nMaintainer: UTFPR\nDescription: EcoLab - Ecological Analysis Tool\n' > "$pkg/DEBIAN/control"
+          printf '[Desktop Entry]\nName=EcoLab\nExec=/opt/ecolab/EcoLab\nIcon=ecolab\nType=Application\nCategories=Science;Education;\nTerminal=false\n' > "$pkg/usr/share/applications/ecolab.desktop"
+          dpkg-deb --build "$pkg" EcoLab-Linux.deb
+      - uses: actions/upload-artifact@v4
         with:
           name: EcoLab-Linux-Installer
           path: EcoLab-Linux.deb
-          retention-days: 30
+          if-no-files-found: error
 
-  # ── macOS: PyInstaller + .dmg ──────────────────────────────────────────────
   build-macos:
-    runs-on: macos-latest
-
+    name: macOS (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            name: Intel
+            slug: intel
+          - runner: macos-14
+            name: Apple Silicon
+            slug: apple-silicon
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install system dependencies (Homebrew)
-        run: |
-          brew install gdal geos proj spatialindex
-
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: ${{ env.PYTHON_VERSION }} }
+      - uses: actions/setup-node@v4
+        with: { node-version: ${{ env.NODE_VERSION }}, cache: npm, cache-dependency-path: ecoLab/frontend/package-lock.json }
+      - name: Install geospatial libraries
+        run: brew install gdal geos proj spatialindex create-dmg
       - name: Build frontend
+        working-directory: ecoLab/frontend
+        run: npm ci && npm run build
+        env: { CI: "false" }
+      - name: Build app bundle
         run: |
-          cd ecoLab/frontend
-          npm install
-          npm run build
-        env:
-          CI: false
-
-      - name: Create required directories
-        run: mkdir -p ecoLab/maps
-      - name: Debug hook inclusion
-        run: |
-          echo "=== Conteúdo de hooks/ ==="
-          ls -la hooks/
-          echo "=== Conteúdo do runtime hook ==="
-          cat hooks/a_disable_pkg_resources_hook.py
-          echo "=== SPECPATH seria ==="
-          python -c "import os; print(os.path.abspath('.'))"
-          echo "=== Caminho absoluto do hook ==="
-          python -c "import os; print(os.path.join(os.path.abspath('.'), 'hooks', 'a_disable_pkg_resources_hook.py'))"
-          python -c "import os; print(os.path.isfile(os.path.join(os.path.abspath('.'), 'hooks', 'a_disable_pkg_resources_hook.py')))"
-      - name: Build executable (PyInstaller)
-        run: |
+          mkdir -p ecoLab/maps
           python -m pip install --upgrade pip setuptools
-          pip install -r requirements-build.txt
-          pip install pyinstaller
-
-      - name: Locate pyinstaller binary         # ← novo, temporário
+          pip install -r requirements-build.txt pyinstaller
+          # pkg_resources é removido pelo setuptools recente; neutralizamos o
+          # runtime hook legado do PyInstaller apenas neste ambiente de build.
+          python -c "import os, PyInstaller; open(os.path.join(os.path.dirname(PyInstaller.__file__), 'hooks', 'rthooks', 'pyi_rth_pkgres.py'), 'w').write('# disabled by EcoLab macOS build\n')"
+          python -m PyInstaller build/EcoLab-macOS.spec
+          test -d dist/EcoLab.app
+      - name: Package DMG
         run: |
-          which pyinstaller
-          which python
-          python -c "import sys; print(sys.executable)"
-          pyinstaller --version
-
-      - name: Neutralize pyi_rth_pkgres hook
-        run: |
-          python -c "
-          import PyInstaller, os
-          hook = os.path.join(os.path.dirname(PyInstaller.__file__),
-                              'hooks', 'rthooks', 'pyi_rth_pkgres.py')
-          print(f'Editando: {hook}')
-          with open(hook, 'w') as f:
-              f.write('# disabled\n')
-          print('OK')
-          "
-
-      - name: Run PyInstaller                   # ← troca para -m
-        run: python -m PyInstaller build\EcoLab-macOS.spec
-
-      - name: Test macOS executable startup
-        run: |
-          echo "=== ARCH ==="
-          uname -m
-          file dist/EcoLab.app/Contents/MacOS/EcoLab
-
-          echo "=== START APP ==="
-          dist/EcoLab.app/Contents/MacOS/EcoLab > ecolab.log 2>&1 &
-          PID=$!
-
-          sleep 30
-
-          echo "=== PROCESS ==="
-          ps aux | grep EcoLab || true
-
-          echo "=== LOG ==="
-          cat ecolab.log || true
-
-          kill $PID || true
-
-      - name: Verify .app bundle
-        run: |
-          echo "=== Conteúdo de dist/ ==="
-          ls -la dist/
-          test -d dist/EcoLab.app || (echo "ERRO: dist/EcoLab.app não encontrado" && exit 1)
-          echo "=== Estrutura do .app ==="
-          ls -la dist/EcoLab.app/Contents/
-          ls -la dist/EcoLab.app/Contents/MacOS/
-
-      - name: Package .dmg
-        run: |
-          brew install create-dmg
-
-          create-dmg \
-            --volname "EcoLab" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --icon "EcoLab.app" 175 190 \
-            --hide-extension "EcoLab.app" \
-            --app-drop-link 425 190 \
-            "EcoLab-macOS.dmg" \
-            "dist/"
-
-          ls -lh EcoLab-macOS.dmg || (echo "Erro: DMG não foi gerado" && exit 1)
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+          create-dmg --volname "EcoLab" --window-pos 200 120 --window-size 600 400 --icon-size 100 --icon "EcoLab.app" 175 190 --hide-extension "EcoLab.app" --app-drop-link 425 190 "EcoLab-macOS-${{ matrix.slug }}.dmg" dist/
+      - uses: actions/upload-artifact@v4
         with:
-          name: EcoLab-macOS-Installer
-          path: EcoLab-macOS.dmg
-          retention-days: 30
+          name: EcoLab-macOS-${{ matrix.slug }}-Installer
+          path: EcoLab-macOS-${{ matrix.slug }}.dmg
+          if-no-files-found: error
 
-  # ── Smoke test Linux ──────────────────────────────────────────────────────
   test-linux:
+    name: Linux startup test
     needs: build-linux
     runs-on: ubuntu-latest
-
     steps:
-      - name: Download .deb
-        uses: actions/download-artifact@v4
-        with:
-          name: EcoLab-Linux-Installer
-          path: artifacts/linux
-
-      - name: Install .deb
-        run: sudo dpkg -i artifacts/linux/EcoLab-Linux.deb
-
-      - name: Start EcoLab in background
+      - uses: actions/download-artifact@v4
+        with: { name: EcoLab-Linux-Installer, path: artifact }
+      - name: Install and start EcoLab
         run: |
-          /opt/ecolab/EcoLab > /tmp/ecolab.log 2>&1 &
+          sudo dpkg -i artifact/EcoLab-Linux.deb
+          ECOLAB_OPEN_BROWSER=0 /opt/ecolab/EcoLab > /tmp/ecolab.log 2>&1 &
           echo $! > /tmp/ecolab.pid
-          sleep 20
-          echo "=== LOG DO ECOLAB ==="
-          cat /tmp/ecolab.log
-          echo "=== PORTAS ABERTAS ==="
-          ss -tlnp
-
-      - name: Wait for backend to be ready
-        run: |
-          for i in $(seq 1 30); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/)
-            if [ "$STATUS" = "200" ]; then
-              echo "Backend respondeu OK (HTTP $STATUS)"
-              exit 0
-            fi
-            echo "Tentativa $i — status $STATUS, aguardando..."
+          trap 'kill $(cat /tmp/ecolab.pid) 2>/dev/null || true; cat /tmp/ecolab.log || true' EXIT
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:8000/api/config && exit 0
             sleep 2
           done
-          echo "Timeout: backend não respondeu em 60s"
           exit 1
 
-      - name: Stop EcoLab
-        if: always()
-        run: kill $(cat /tmp/ecolab.pid) 2>/dev/null || true
-
-  # ── Smoke test macOS ──────────────────────────────────────────────────────
   test-macos:
+    name: macOS startup test (${{ matrix.name }})
     needs: build-macos
-    runs-on: macos-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            name: Intel
+            slug: intel
+          - runner: macos-14
+            name: Apple Silicon
+            slug: apple-silicon
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Download .dmg
-        uses: actions/download-artifact@v4
-        with:
-          name: EcoLab-macOS-Installer
-          path: artifacts/macos
-
-      - name: Mount .dmg and install app
+      - uses: actions/download-artifact@v4
+        with: { name: EcoLab-macOS-${{ matrix.slug }}-Installer, path: artifact }
+      - name: Mount and start EcoLab
         run: |
-          hdiutil attach artifacts/macos/EcoLab-macOS.dmg -mountpoint /Volumes/EcoLab -nobrowse -quiet
-          cp -R /Volumes/EcoLab/EcoLab.app /Applications/EcoLab.app
-          hdiutil detach /Volumes/EcoLab -quiet
-
-      - name: Inspect .app bundle structure
-        run: |
-          echo "=== Conteúdo de Contents/ ==="
-          ls -la /Applications/EcoLab.app/Contents/
-
-          echo "=== Conteúdo de Contents/MacOS/ ==="
-          ls -la /Applications/EcoLab.app/Contents/MacOS/
-
-          echo "=== Info.plist ==="
-          cat /Applications/EcoLab.app/Contents/Info.plist 2>/dev/null || echo "(sem Info.plist)"
-
-          echo "=== Permissões do binário ==="
-          file /Applications/EcoLab.app/Contents/MacOS/EcoLab
-          ls -lah /Applications/EcoLab.app/Contents/MacOS/EcoLab
-
-      - name: Start EcoLab in background
-        run: |
-          echo "=== REMOVENDO QUARANTINE (Gatekeeper) ==="
-          xattr -rd com.apple.quarantine /Applications/EcoLab.app 2>/dev/null || true
-
-          echo "=== INICIANDO ECOLAB ==="
-          /Applications/EcoLab.app/Contents/MacOS/EcoLab > /tmp/ecolab.log 2>&1 &
+          hdiutil attach "artifact/EcoLab-macOS-${{ matrix.slug }}.dmg" -mountpoint /Volumes/EcoLab -nobrowse -quiet
+          ECOLAB_OPEN_BROWSER=0 /Volumes/EcoLab/EcoLab.app/Contents/MacOS/EcoLab > /tmp/ecolab.log 2>&1 &
           echo $! > /tmp/ecolab.pid
-          echo "PID: $(cat /tmp/ecolab.pid)"
-
-          for i in 1 2 3 4; do
-            sleep 5
-            echo "────────────── ${i}x5s ──────────────"
-            cat /tmp/ecolab.log
-            netstat -an | grep LISTEN | grep -E '8000' || echo "(porta 8000 ainda não aberta)"
-            kill -0 $(cat /tmp/ecolab.pid) 2>&1 && echo "PROCESSO VIVO" || echo "PROCESSO MORREU"
-          done
-
-      - name: Wait for backend to be ready
-        run: |
-          for i in $(seq 1 30); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/)
-            if [ "$STATUS" = "200" ]; then
-              echo "Backend respondeu OK (HTTP $STATUS)"
-              exit 0
-            fi
-            echo "Tentativa $i — status $STATUS, aguardando..."
+          trap 'kill $(cat /tmp/ecolab.pid) 2>/dev/null || true; hdiutil detach /Volumes/EcoLab -quiet || true; cat /tmp/ecolab.log || true' EXIT
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:8000/api/config && exit 0
             sleep 2
           done
-          echo "Timeout: backend não respondeu em 60s"
           exit 1
 
-      - name: Dump diagnostics on failure
-        if: failure()
-        run: |
-          echo "════════════════════════════════════════"
-          echo "           DIAGNÓSTICO DE FALHA         "
-          echo "════════════════════════════════════════"
-
-          echo "=== LOG COMPLETO ==="
-          cat /tmp/ecolab.log || echo "(log vazio)"
-
-          echo "=== PORTAS EM LISTEN ==="
-          netstat -an | grep LISTEN
-
-          echo "=== PROCESSOS ATIVOS ==="
-          ps aux | grep -E '[Ee]co[Ll]ab|python|uvicorn' | grep -v grep || echo "(nenhum)"
-
-          echo "=== DYLIBS DO BINÁRIO ==="
-          otool -L /Applications/EcoLab.app/Contents/MacOS/EcoLab 2>/dev/null | head -40
-
-          echo "=== SYSTEM LOG (últimos 2min) ==="
-          log show --last 2m --predicate 'process == "EcoLab" OR process CONTAINS "python"' \
-            --style compact 2>/dev/null | tail -50 || echo "(indisponível)"
-
-      - name: Stop EcoLab
-        if: always()
-        run: kill $(cat /tmp/ecolab.pid) 2>/dev/null || true
-
-  # ── Release: publica todos os instaladores ────────────────────────────────
   release:
-    needs: [build-windows, build-linux, build-macos]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-windows, build-linux, build-macos, test-linux, test-macos]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    permissions: { contents: write }
     steps:
-      - name: Download Windows installer
-        uses: actions/download-artifact@v4
-        with:
-          name: EcoLab-Windows-Installer
-          path: artifacts/windows
-
-      - name: Download Linux installer
-        uses: actions/download-artifact@v4
-        with:
-          name: EcoLab-Linux-Installer
-          path: artifacts/linux
-
-      - name: Download macOS installer
-        uses: actions/download-artifact@v4
-        with:
-          name: EcoLab-macOS-Installer
-          path: artifacts/macos
-
-      - name: Create Release
+      - uses: actions/download-artifact@v4
+        with: { name: EcoLab-Windows-Installer, path: artifacts/windows }
+      - uses: actions/download-artifact@v4
+        with: { name: EcoLab-Linux-Installer, path: artifacts/linux }
+      - uses: actions/download-artifact@v4
+        with: { pattern: EcoLab-macOS-*-Installer, path: artifacts/macos, merge-multiple: true }
+      - name: Create prerelease
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: "Latest Build"
+          name: Latest Build
           prerelease: true
+          generate_release_notes: true
           files: |
             artifacts/windows/EcoLab_Setup.exe
             artifacts/linux/EcoLab-Linux.deb
-            artifacts/macos/EcoLab-macOS.dmg
-          generate_release_notes: true
+            artifacts/macos/*.dmg
