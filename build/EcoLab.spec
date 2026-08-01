@@ -235,6 +235,6 @@ exe = EXE(
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
-    manifest='EcoLab.manifest',
+    manifest=os.path.join(ROOT, 'EcoLab.manifest'),
     entitlements_file=None,
 )
