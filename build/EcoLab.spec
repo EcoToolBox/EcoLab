@@ -5,11 +5,14 @@ datas = []
 binaries = []
 hiddenimports = []
 
-# ── Dados estáticos da aplicação ──────────────────────────────────────────────
+import os
+
+ROOT = os.path.dirname(SPECPATH)
+
 datas += [
-    ('ecoLab/backend', 'ecoLab/backend'),
-    ('ecoLab/frontend/build', 'ecoLab/frontend/build'),
-    ('ecoLab/maps', 'ecoLab/maps'),
+    (os.path.join(ROOT, 'ecoLab', 'backend'), 'ecoLab/backend'),
+    (os.path.join(ROOT, 'ecoLab', 'frontend', 'build'), 'ecoLab/frontend/build'),
+    (os.path.join(ROOT, 'ecoLab', 'maps'), 'ecoLab/maps'),
 ]
 
 # ── Metadados (importlib.metadata.version) ────────────────────────────────────
