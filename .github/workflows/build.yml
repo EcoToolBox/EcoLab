@@ -22,13 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: ${{ env.PYTHON_VERSION }} }
+        with:
+          python-version: "${{ env.PYTHON_VERSION }}"
       - uses: actions/setup-node@v4
-        with: { node-version: ${{ env.NODE_VERSION }}, cache: npm, cache-dependency-path: ecoLab/frontend/package-lock.json }
+        with:
+          node-version: "${{ env.NODE_VERSION }}"
+          cache: npm
+          cache-dependency-path: ecoLab/frontend/package-lock.json
       - name: Build frontend
         working-directory: ecoLab/frontend
         run: npm ci && npm run build
-        env: { CI: "false" }
+        env:
+          CI: "false"
       - name: Prepare build directories
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path ecoLab/maps | Out-Null
@@ -55,15 +60,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: ${{ env.PYTHON_VERSION }} }
+        with:
+          python-version: "${{ env.PYTHON_VERSION }}"
       - uses: actions/setup-node@v4
-        with: { node-version: ${{ env.NODE_VERSION }}, cache: npm, cache-dependency-path: ecoLab/frontend/package-lock.json }
+        with:
+          node-version: "${{ env.NODE_VERSION }}"
+          cache: npm
+          cache-dependency-path: ecoLab/frontend/package-lock.json
       - name: Install geospatial libraries
         run: sudo apt-get update && sudo apt-get install -y libgdal-dev gdal-bin libgeos-dev libproj-dev libspatialindex-dev
       - name: Build frontend
         working-directory: ecoLab/frontend
         run: npm ci && npm run build
-        env: { CI: "false" }
+        env:
+          CI: "false"
       - name: Build executable
         run: |
           mkdir -p ecoLab/maps
@@ -102,15 +112,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: ${{ env.PYTHON_VERSION }} }
+        with:
+          python-version: "${{ env.PYTHON_VERSION }}"
       - uses: actions/setup-node@v4
-        with: { node-version: ${{ env.NODE_VERSION }}, cache: npm, cache-dependency-path: ecoLab/frontend/package-lock.json }
+        with:
+          node-version: "${{ env.NODE_VERSION }}"
+          cache: npm
+          cache-dependency-path: ecoLab/frontend/package-lock.json
       - name: Install geospatial libraries
         run: brew install gdal geos proj spatialindex create-dmg
       - name: Build frontend
         working-directory: ecoLab/frontend
         run: npm ci && npm run build
-        env: { CI: "false" }
+        env:
+          CI: "false"
       - name: Build app bundle
         run: |
           mkdir -p ecoLab/maps
@@ -136,7 +151,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: EcoLab-Linux-Installer, path: artifact }
+        with:
+          name: EcoLab-Linux-Installer
+          path: artifact
       - name: Install and start EcoLab
         run: |
           sudo dpkg -i artifact/EcoLab-Linux.deb
@@ -165,7 +182,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: EcoLab-macOS-${{ matrix.slug }}-Installer, path: artifact }
+        with:
+          name: "EcoLab-macOS-${{ matrix.slug }}-Installer"
+          path: artifact
       - name: Mount and start EcoLab
         run: |
           hdiutil attach "artifact/EcoLab-macOS-${{ matrix.slug }}.dmg" -mountpoint /Volumes/EcoLab -nobrowse -quiet
@@ -182,14 +201,22 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build-windows, build-linux, build-macos, test-linux, test-macos]
     runs-on: ubuntu-latest
-    permissions: { contents: write }
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: EcoLab-Windows-Installer, path: artifacts/windows }
+        with:
+          name: EcoLab-Windows-Installer
+          path: artifacts/windows
       - uses: actions/download-artifact@v4
-        with: { name: EcoLab-Linux-Installer, path: artifacts/linux }
+        with:
+          name: EcoLab-Linux-Installer
+          path: artifacts/linux
       - uses: actions/download-artifact@v4
-        with: { pattern: EcoLab-macOS-*-Installer, path: artifacts/macos, merge-multiple: true }
+        with:
+          pattern: EcoLab-macOS-*-Installer
+          path: artifacts/macos
+          merge-multiple: true
       - name: Create prerelease
         uses: softprops/action-gh-release@v2
         with:
