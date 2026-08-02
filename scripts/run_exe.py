@@ -9,19 +9,20 @@ import webbrowser
 import socket
 import sys
 import os
-
-
 from pathlib import Path
-from diskcache import Cache
-
-def _get_persistent_cache_dir(name: str) -> Path:
-    base = Path(os.path.dirname(sys.executable)) if getattr(sys, "frozen", False) else Path.cwd()
-    path = base / name
-    path.mkdir(exist_ok=True)
-    return path
-
+from platformdirs import user_cache_dir
 import diskcache
 _original_cache = diskcache.Cache
+
+def _get_persistent_cache_dir(name: str) -> Path:
+    if getattr(sys, "frozen", False):
+        base = Path(user_cache_dir("EcoLab", "UTFPR"))
+    else:
+        base = Path.cwd()
+    path = base / name
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
 
 def _patched_cache(directory, *args, **kwargs):
     dir_path = Path(directory)
