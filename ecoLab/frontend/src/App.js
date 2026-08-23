@@ -75,6 +75,15 @@ export default function App() {
     presenceType: "presence_only",
     selectedModels: [],
     selectedMetrics: [],
+    // Validação: "random" (padrão, uso genérico) ou "spatial" (K-means por
+    // coordenadas). nFolds só é usado no modo espacial. backgroundRatio é
+    // quantos pontos de background por presença (padrão 2:1).
+    // backgroundSource indica se o background vem do grid gerado
+    // automaticamente ou de uma planilha fornecida pelo usuário.
+    validationMode: "random",
+    nFolds: 10,
+    backgroundRatio: 2,
+    backgroundSource: "grid_random",
   });
 
   // ── Fetched data (populated by data screens) ──
@@ -174,6 +183,7 @@ export default function App() {
                 selectedSpecies={selectedSpecies}
                 modelsData={modelsData}
                 setModelsData={setModelsData}
+                envGridData={envGridData}
               />
             }
           />

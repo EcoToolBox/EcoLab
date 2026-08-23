@@ -18,7 +18,7 @@ from services import get_environment, get_interactions
 _GRID_CACHE: dict[str, pd.DataFrame] = {}
 
 WORLD_BBOX = (-90, -180, 90, 180)
-RESOLUTION_DEG = 10 / 111
+RESOLUTION_DEG = 1 / 111
 
 @lru_cache(maxsize=None)
 def _load_world_shapefile():

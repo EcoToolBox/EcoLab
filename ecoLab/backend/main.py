@@ -167,6 +167,7 @@ def search_interactions_occurrences(interactions: dict):
 @app.post("/api/models")
 def run_models(models: dict):
     try:
+        print("170")
         result = get_models.run_models(models)
     except ValueError as exc:
         raise HTTPException(422, str(exc))

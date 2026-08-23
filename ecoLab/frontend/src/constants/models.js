@@ -25,3 +25,29 @@ export const METRICS = [
   { value: "tss", label: "TSS", description: "True Skill Statistic — independente da prevalência da espécie. Varia de -1 a 1, onde 1 é perfeito e 0 equivale a aleatoriedade." },
   { value: "boyce", label: "Boyce Index", description: "Avalia o modelo apenas com dados de presença, ideal para modelos presence only. Varia de -1 a 1." },
 ];
+
+export const VALIDATION_MODES = [
+  {
+    value: "random",
+    label: "Aleatória",
+    description: "Divide os dados em 80% treino / 20% teste de forma aleatória (estratificada). Recomendado para uso geral.",
+  },
+  {
+    value: "spatial",
+    label: "Espacial",
+    description: "Agrupa os pontos por coordenadas (K-means) em blocos geográficos e usa cada bloco como fold de teste. Reduz o otimismo causado por autocorrelação espacial — recomendado quando presenças e background estão espacialmente agrupados, ou para reproduzir estudos que usam essa abordagem.",
+  },
+];
+
+export const BACKGROUND_SOURCES = [
+  {
+    value: "grid_random",
+    label: "Grid aleatório",
+    description: "O background é amostrado automaticamente do grid ambiental gerado para o país/área selecionada. Uso genérico, recomendado na maioria dos casos.",
+  },
+  {
+    value: "provided",
+    label: "Arquivo / background fornecido",
+    description: "Usa a planilha ambiental enviada por você (etapa de Ambiente) como grid de background e de predição, em vez de gerar um grid automático. Útil para reproduzir um estudo específico com pontos de background já definidos.",
+  },
+];

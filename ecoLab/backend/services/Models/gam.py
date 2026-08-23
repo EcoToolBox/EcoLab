@@ -1,24 +1,50 @@
 from pygam import LogisticGAM, s
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, roc_auc_score
-import pandas as pd
 import numpy as np
-from .metrics import calculate_boyce, calculate_tss
+import pandas as pd
+from .validation import run_validation
 
 
+class _GAMEstimator:
+    """
+    Wrapper fino em volta do LogisticGAM para expor a interface
+    fit/predict_proba usada pelo módulo de validação (predict_proba
+    devolvendo duas colunas, como no padrão sklearn).
+    """
 
-def run(df: pd.DataFrame, feature_cols: list[str], selected_metrics: list[str] = []) -> dict:
-    print("Running GAM model")
+    def __init__(self, n_features: int):
+        terms = s(0)
+        for i in range(1, n_features):
+            terms += s(i)
+        self.gam = LogisticGAM(terms)
 
+    def fit(self, X, y):
+        X_arr = X.values if hasattr(X, "values") else np.asarray(X)
+        y_arr = y.values if hasattr(y, "values") else np.asarray(y)
+        self.gam.gridsearch(X_arr, y_arr, progress=False)
+        return self
+
+    def predict_proba(self, X):
+        X_arr = X.values if hasattr(X, "values") else np.asarray(X)
+        p1 = self.gam.predict_proba(X_arr)
+        p1 = np.asarray(p1).reshape(-1)
+        return np.column_stack([1 - p1, p1])
+
+
+def _prepare(df: pd.DataFrame, feature_cols: list[str]):
     missing = [c for c in feature_cols if c not in df.columns]
     if missing:
         raise ValueError(f"Colunas ausentes no DataFrame: {missing}")
 
+    for col in ("latitude", "longitude"):
+        if col not in df.columns:
+            raise ValueError(f"Coluna '{col}' é necessária para separar os folds espaciais.")
+
     X = df[feature_cols].copy()
     y = df["presence"].copy()
+    coords = df[["latitude", "longitude"]].copy()
 
     mask = X.notna().all(axis=1)
-    X, y = X[mask], y[mask]
+    X, y, coords = X[mask], y[mask], coords[mask]
 
     class_counts = y.value_counts()
     print(f"Registros usados: {len(X)} ({class_counts.get(1, 0)} presenças, {class_counts.get(0, 0)} ausências)")
@@ -36,34 +62,33 @@ def run(df: pd.DataFrame, feature_cols: list[str], selected_metrics: list[str] =
             "São necessárias pelo menos 5 amostras por classe."
         )
 
-    try:
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-    except ValueError:
-        print("⚠️  Stratify falhou — usando split sem estratificação.")
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+    return X, y, coords
 
-    for split_name, split_y in [("treino", y_train), ("teste", y_test)]:
-        if len(split_y.unique()) < 2:
-            raise ValueError(
-                f"Split de {split_name} ficou com apenas uma classe após divisão. "
-                "Aumente o número de amostras ou reduza o test_size."
-            )
 
-    terms = s(0)
-    for i in range(1, len(feature_cols)):
-        terms += s(i)
+def run(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    selected_metrics: list[str] = [],
+    validation_mode: str = "random",
+    n_folds: int = 10,
+) -> dict:
+    print("Running GAM model")
 
-    model = LogisticGAM(terms)
-    model.gridsearch(X_train.values, y_train.values)
+    X, y, coords = _prepare(df, feature_cols)
+    n_features = len(feature_cols)
 
-    y_pred = (model.predict_proba(X_test.values) >= 0.5).astype(int)
-    y_prob = model.predict_proba(X_test.values)
+    def build_estimator():
+        return _GAMEstimator(n_features)
 
-    report = classification_report(y_test, y_pred, output_dict=True)
+    cv_result = run_validation(
+        X, y, coords, build_estimator, selected_metrics,
+        validation_mode=validation_mode, n_folds=n_folds,
+    )
+
+    # Modelo final treinado com 100% dos dados — usado para gerar os mapas.
+    final_estimator = build_estimator()
+    final_estimator.fit(X, y)
+    model = final_estimator.gam
 
     feature_importance = {}
     for i, col in enumerate(feature_cols):
@@ -72,33 +97,20 @@ def run(df: pd.DataFrame, feature_cols: list[str], selected_metrics: list[str] =
         Xi[:, i] = xi
         contrib = model.partial_dependence(term=i, X=Xi)
         feature_importance[col] = float(np.std(contrib))
-
-    feature_importance = dict(
-        sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
-    )
+    feature_importance = dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=True))
 
     print("Importância das variáveis (std da contribuição):")
     for feat, imp in feature_importance.items():
         print(f"  {feat}: {imp:.4f}")
 
-    metrics = {}
-    y_test_np = y_test.values
-
-    if "auc" in selected_metrics:
-        metrics["auc"] = float(roc_auc_score(y_test_np, y_prob))
-
-    if "tss" in selected_metrics:
-        metrics["tss"] = calculate_tss(y_test_np, y_prob)
-
-    if "boyce" in selected_metrics:
-        boyce = calculate_boyce(y_test_np, y_prob)
-        metrics["boyce"] = boyce
-
     return {
-        "model": model,
-        "report": report,
+        "model": final_estimator,
+        "report": cv_result["report"],
         "feature_importance": feature_importance,
         "feature_cols": feature_cols,
-        "X_train": X_train,
-        "metrics": metrics,
+        "metrics": cv_result["metrics"],
+        "metrics_std": cv_result["metrics_std"],
+        "fold_metrics": cv_result["fold_metrics"],
+        "validation_mode": cv_result["validation_mode"],
+        "n_folds": cv_result["n_folds"],
     }

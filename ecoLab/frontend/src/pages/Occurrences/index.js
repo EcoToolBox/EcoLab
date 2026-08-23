@@ -91,11 +91,12 @@ export default function Occurrences({
             <Divider sx={{ my: 2, opacity: 0.6 }} />
             <YearSlider value={years} setValue={setYears} />
             <Divider sx={{ my: 2, opacity: 0.6 }} />
-            {!place.country && !place.map && (
-              <Alert severity="info" sx={{ mt: 1 }}>
-                Selecione o país na coluna à esquerda, junto da seleção de espécies.
-              </Alert>
-            )}
+          </>
+        )}
+        {(usesUpload & !usesSources) && (
+          <>
+            <Divider sx={{ my: 2, opacity: 0.6 }} />
+            <PlaceCountryOrMap value={place} setValue={setPlace} />
           </>
         )}
       </Box>
@@ -104,8 +105,8 @@ export default function Occurrences({
         selectedSpecies={selectedSpecies}
         disableNext={disable()}
         disableHint={
-          usesUpload && !occurrenceUpload.file
-            ? "Selecione uma planilha com os dados de ocorrência para prosseguir."
+          usesUpload && (!occurrenceUpload.file && !place)
+            ? "Adicione uma planilha com os dados de ocorrência e o país para prosseguir."
             : "Selecione ao menos uma fonte de dados (e as credenciais necessárias) para prosseguir."
         }
         nextOverride={usesUpload ? "/occurrence-mapping" : undefined}

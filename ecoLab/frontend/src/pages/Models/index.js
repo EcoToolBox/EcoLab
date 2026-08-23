@@ -1,17 +1,30 @@
-import { Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Tooltip, IconButton } from "@mui/material";
+import {
+    Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Tooltip, IconButton,
+    RadioGroup, Radio, TextField, Alert,
+} from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import StepActions from "../../components/StepActions";
 import { useState, useEffect } from "react";
-import { MODELS, PRESENCE_TYPES, METRICS } from "../../constants/models";
+import { MODELS, PRESENCE_TYPES, METRICS, VALIDATION_MODES, BACKGROUND_SOURCES } from "../../constants/models";
 
-export default function Models({ selectedSpecies, modelsData, setModelsData }) {
+export default function Models({ selectedSpecies, modelsData, setModelsData, envGridData }) {
     const [presenceType, setPresenceType] = useState("presence_only");
     const [selectedModels, setSelectedModels] = useState([]);
     const [selectedMetrics, setSelectedMetrics] = useState([]);
 
+    // Validação (aleatória continua sendo o padrão para uso genérico;
+    // espacial é uma escolha explícita).
+    const [validationMode, setValidationMode] = useState(modelsData?.validationMode ?? "random");
+    const [nFolds, setNFolds] = useState(modelsData?.nFolds ?? 10);
+    const [backgroundRatio, setBackgroundRatio] = useState(modelsData?.backgroundRatio ?? 2);
+    const [backgroundSource, setBackgroundSource] = useState(modelsData?.backgroundSource ?? "grid_random");
+
     useEffect(() => {
-      setModelsData({ presenceType, selectedModels, selectedMetrics });
-    }, [presenceType, selectedModels, selectedMetrics, setModelsData]);
+      setModelsData({
+        presenceType, selectedModels, selectedMetrics,
+        validationMode, nFolds, backgroundRatio, backgroundSource,
+      });
+    }, [presenceType, selectedModels, selectedMetrics, validationMode, nFolds, backgroundRatio, backgroundSource, setModelsData]);
 
     const handlePresenceType = (value) => {
         setPresenceType(value);
@@ -151,6 +164,97 @@ export default function Models({ selectedSpecies, modelsData, setModelsData }) {
                 <Typography variant="body2" sx={{ color: "#888", mb: 2 }}>
                     * MaxEnt é o único modelo recomendado para dados de presença apenas, devido à sua capacidade de lidar com esse tipo de dado.
                 </Typography>
+            )}
+
+            <Divider sx={{ my: 2, opacity: 0.6 }} />
+
+            {/* Validação */}
+            <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ color: "#333" }}>
+                Validação
+            </Typography>
+            <RadioGroup
+                value={validationMode}
+                onChange={(e) => setValidationMode(e.target.value)}
+                sx={{ mb: 1 }}
+            >
+                {VALIDATION_MODES.map((mode) => (
+                    <Box key={mode.value} sx={{ display: "flex", alignItems: "center", color: "#555" }}>
+                        <FormControlLabel
+                            value={mode.value}
+                            control={<Radio />}
+                            label={
+                                <Typography variant="body2" sx={{ color: "#333" }}>
+                                    {mode.label}
+                                </Typography>
+                            }
+                        />
+                        <Tooltip title={mode.description} placement="right" arrow>
+                            <IconButton size="small" sx={{ color: "#888" }}>
+                                <InfoOutlinedIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                    </Box>
+                ))}
+            </RadioGroup>
+
+            {validationMode === "spatial" && (
+                <TextField
+                    label="Número de folds espaciais"
+                    type="number"
+                    size="small"
+                    value={nFolds}
+                    onChange={(e) => setNFolds(Math.max(2, parseInt(e.target.value, 10) || 10))}
+                    inputProps={{ min: 2, max: 30 }}
+                    sx={{ mb: 2, width: 260 }}
+                    helperText="Grupos geográficos formados por K-means nas coordenadas (padrão: 10)."
+                />
+            )}
+
+            <Box sx={{ mb: 2 }}>
+                <TextField
+                    label="Proporção de background"
+                    type="number"
+                    size="small"
+                    value={backgroundRatio}
+                    onChange={(e) => setBackgroundRatio(Math.max(0.1, parseFloat(e.target.value) || 2))}
+                    inputProps={{ min: 0.1, max: 10, step: 0.5 }}
+                    sx={{ width: 260 }}
+                    helperText="Pontos de background por presença (padrão: 2 por presença)."
+                />
+            </Box>
+
+            <Typography variant="body2" sx={{ color: "#555", mb: 0.5 }}>
+                Origem do background
+            </Typography>
+            <RadioGroup
+                value={backgroundSource}
+                onChange={(e) => setBackgroundSource(e.target.value)}
+                sx={{ mb: 1 }}
+            >
+                {BACKGROUND_SOURCES.map((source) => (
+                    <Box key={source.value} sx={{ display: "flex", alignItems: "center", color: "#555" }}>
+                        <FormControlLabel
+                            value={source.value}
+                            control={<Radio />}
+                            label={
+                                <Typography variant="body2" sx={{ color: "#333" }}>
+                                    {source.label}
+                                </Typography>
+                            }
+                        />
+                        <Tooltip title={source.description} placement="right" arrow>
+                            <IconButton size="small" sx={{ color: "#888" }}>
+                                <InfoOutlinedIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                    </Box>
+                ))}
+            </RadioGroup>
+            {backgroundSource === "provided" && (!envGridData || envGridData.length === 0) && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                    Nenhuma planilha ambiental foi enviada na etapa de Ambiente. Sem ela, o sistema
+                    vai usar o grid gerado automaticamente mesmo com essa opção selecionada.
+                </Alert>
             )}
 
             <Divider sx={{ my: 2, opacity: 0.6 }} />

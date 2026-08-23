@@ -218,11 +218,21 @@ function VariableImportanceTable({ variableImportance }) {
 
 /** Accordion interno: um modelo dentro de uma espécie */
 function ModelAccordion({ model, modelData, index }) {
-  const path          = modelData?.path ?? modelData;
-  const metrics       = modelData?.metrics ?? {};
-  const label         = MODEL_LABELS[model] ?? model;
-  const hasMetrics    = Object.keys(metrics).length > 0;
-  const varImportance = modelData?.variable_importance ?? modelData?.variableImportance ?? {};
+  const path            = modelData?.path ?? modelData;
+  const metrics         = modelData?.metrics ?? {};
+  const metricsStd      = modelData?.metrics_std ?? null;
+  const foldMetrics     = modelData?.fold_metrics ?? null;
+  const validationMode  = modelData?.validation_mode ?? "random";
+  const nFolds          = modelData?.n_folds ?? null;
+  const label           = MODEL_LABELS[model] ?? model;
+  const hasMetrics      = Object.keys(metrics).length > 0;
+  const varImportance   = modelData?.variable_importance ?? modelData?.variableImportance ?? {};
+
+  const formatMetric = (key, value) => {
+    if (value == null) return null;
+    const std = metricsStd?.[key];
+    return std != null ? `${value.toFixed(3)} ± ${std.toFixed(3)}` : value.toFixed(3);
+  };
 
   return (
     <Accordion
@@ -238,14 +248,20 @@ function ModelAccordion({ model, modelData, index }) {
       }}
     >
       <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 48 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
           <Typography fontWeight={600} fontSize="0.95rem">{label}</Typography>
+          <Chip
+            label={validationMode === "spatial" ? `Validação espacial (${nFolds} folds)` : "Validação aleatória"}
+            size="small"
+            variant="outlined"
+            sx={{ fontWeight: 600, fontSize: "0.7rem" }}
+          />
           {hasMetrics &&
             Object.entries(metrics).map(([key, value]) =>
               value != null ? (
                 <Chip
                   key={key}
-                  label={`${METRIC_LABELS[key] ?? key}: ${value.toFixed(3)}`}
+                  label={`${METRIC_LABELS[key] ?? key}: ${formatMetric(key, value)}`}
                   size="small"
                   sx={{
                     backgroundColor: METRIC_COLOR[key] ?? "#7c3aed",
@@ -312,7 +328,7 @@ function ModelAccordion({ model, modelData, index }) {
                         {METRIC_LABELS[key] ?? key}
                       </Typography>
                       <Chip
-                        label={value.toFixed(4)}
+                        label={formatMetric(key, value)}
                         size="small"
                         sx={{
                           backgroundColor: METRIC_COLOR[key] ?? "#7c3aed",
@@ -329,6 +345,44 @@ function ModelAccordion({ model, modelData, index }) {
             </Box>
           </Grid>
         </Grid>
+
+        {Array.isArray(foldMetrics) && foldMetrics.length > 0 && (
+          <Box sx={{ mt: 2, border: "1px solid #ddd", borderRadius: 2, overflow: "hidden" }}>
+            <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid #ddd", backgroundColor: "#f9f9f9" }}>
+              <Typography variant="subtitle2" fontWeight={600}>
+                Métricas por Fold Espacial
+              </Typography>
+            </Box>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
+                    <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Fold</TableCell>
+                    <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Nº teste</TableCell>
+                    {Object.keys(metrics).map((key) => (
+                      <TableCell key={key} sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
+                        {METRIC_LABELS[key] ?? key}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {foldMetrics.map((fold) => (
+                    <TableRow key={fold.fold} sx={{ "&:nth-of-type(odd)": { backgroundColor: "#fafafa" } }}>
+                      <TableCell sx={{ fontSize: "0.8rem" }}>{fold.fold}</TableCell>
+                      <TableCell sx={{ fontSize: "0.8rem" }}>{fold.n_test}</TableCell>
+                      {Object.keys(metrics).map((key) => (
+                        <TableCell key={key} sx={{ fontSize: "0.8rem" }}>
+                          {fold[key] != null ? fold[key].toFixed(4) : "—"}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
 
         <VariableImportanceTable variableImportance={varImportance} />
       </AccordionDetails>

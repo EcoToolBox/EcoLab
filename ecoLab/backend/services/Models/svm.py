@@ -1,23 +1,27 @@
 from sklearn.svm import SVC
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, roc_auc_score
 from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import roc_auc_score
 import pandas as pd
 import numpy as np
-from .metrics import calculate_boyce, calculate_tss
+from .validation import run_validation
 
-def run(df: pd.DataFrame, feature_cols: list[str], selected_metrics: list[str] = []) -> dict:
-    print("Running SVM model")
 
+def _prepare(df: pd.DataFrame, feature_cols: list[str]):
     missing = [c for c in feature_cols if c not in df.columns]
     if missing:
         raise ValueError(f"Colunas ausentes no DataFrame: {missing}")
 
+    for col in ("latitude", "longitude"):
+        if col not in df.columns:
+            raise ValueError(f"Coluna '{col}' é necessária para separar os folds espaciais.")
+
     X = df[feature_cols].copy()
     y = df["presence"].copy()
+    coords = df[["latitude", "longitude"]].copy()
 
     mask = X.notna().all(axis=1)
-    X, y = X[mask], y[mask]
+    X, y, coords = X[mask], y[mask], coords[mask]
 
     class_counts = y.value_counts()
     print(f"Registros usados: {len(X)} ({class_counts.get(1, 0)} presenças, {class_counts.get(0, 0)} ausências)")
@@ -35,78 +39,64 @@ def run(df: pd.DataFrame, feature_cols: list[str], selected_metrics: list[str] =
             "São necessárias pelo menos 5 amostras por classe."
         )
 
-    try:
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-    except ValueError:
-        print("⚠️  Stratify falhou — usando split sem estratificação.")
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+    return X, y, coords
 
-    for split_name, split_y in [("treino", y_train), ("teste", y_test)]:
-        if len(split_y.unique()) < 2:
-            raise ValueError(
-                f"Split de {split_name} ficou com apenas uma classe após divisão. "
-                "Aumente o número de amostras ou reduza o test_size."
-            )
 
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+def run(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    selected_metrics: list[str] = [],
+    validation_mode: str = "random",
+    n_folds: int = 10,
+) -> dict:
+    print("Running SVM model")
 
-    model = SVC(
-        kernel="rbf",
-        C=1.0,
-        gamma="scale",
-        class_weight="balanced",
-        probability=True,
-        random_state=42,
+    X, y, coords = _prepare(df, feature_cols)
+
+    def build_estimator():
+        return Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", SVC(
+                kernel="rbf", C=1.0, gamma="scale",
+                class_weight="balanced", probability=True, random_state=42,
+            )),
+        ])
+
+    cv_result = run_validation(
+        X, y, coords, build_estimator, selected_metrics,
+        validation_mode=validation_mode, n_folds=n_folds,
     )
 
-    model.fit(X_train_scaled, y_train)
+    # Modelo final treinado com 100% dos dados — usado para gerar os mapas.
+    model = build_estimator()
+    model.fit(X, y)
 
-    y_pred = model.predict(X_test_scaled)
-    y_prob = model.predict_proba(X_test_scaled)[:, 1]
-    y_test_np = y_test.values
+    base_auc = cv_result["metrics"].get("auc")
+    if base_auc is None:
+        base_auc = float(roc_auc_score(y, model.predict_proba(X)[:, 1]))
 
-    report = classification_report(y_test, y_pred, output_dict=True)
-
-    base_auc = roc_auc_score(y_test_np, y_prob)
     feature_importance = {}
     for col in feature_cols:
-        X_perm = X_test.copy()
+        X_perm = X.copy()
         X_perm[col] = np.random.permutation(X_perm[col].values)
-        y_prob_perm = model.predict_proba(scaler.transform(X_perm))[:, 1]
-        perm_auc = roc_auc_score(y_test_np, y_prob_perm)
+        y_prob_perm = model.predict_proba(X_perm)[:, 1]
+        perm_auc = roc_auc_score(y, y_prob_perm)
         feature_importance[col] = float(base_auc - perm_auc)
+    feature_importance = dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=True))
 
-    feature_importance = dict(
-        sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
-    )
-
-    metrics = {}
-
-    if "auc" in selected_metrics:
-        metrics["auc"] = float(base_auc)
-
-    if "tss" in selected_metrics:
-        metrics["tss"] = calculate_tss(y_test_np, y_prob)
-
-    if "boyce" in selected_metrics:
-        metrics["boyce"] = calculate_boyce(y_test_np, y_prob)
-
-    print("Métricas:", metrics)
+    print("Métricas:", cv_result["metrics"])
     print("Importância das variáveis (queda no AUC por permutação):")
     for feat, imp in feature_importance.items():
         print(f"  {feat}: {imp:.4f}")
 
     return {
         "model": model,
-        "scaler": scaler,
-        "report": report,
+        "report": cv_result["report"],
         "feature_importance": feature_importance,
         "feature_cols": feature_cols,
-        "metrics": metrics,
+        "metrics": cv_result["metrics"],
+        "metrics_std": cv_result["metrics_std"],
+        "fold_metrics": cv_result["fold_metrics"],
+        "validation_mode": cv_result["validation_mode"],
+        "n_folds": cv_result["n_folds"],
     }

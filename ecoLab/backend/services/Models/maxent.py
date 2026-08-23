@@ -1,107 +1,105 @@
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import roc_auc_score
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.pipeline import Pipeline
 from sklearn.inspection import permutation_importance
-from sklearn.model_selection import train_test_split
 import pandas as pd
-import numpy as np
-from .metrics import calculate_boyce, calculate_tss
+from .validation import run_validation
 
 
-def run(df: pd.DataFrame, feature_cols: list[str], selected_metrics: list[str] = []) -> dict:
-    print(df)
-    print(df.columns)
-    print("Running MaxEnt model (sklearn implementation)")
-
+def _prepare(df: pd.DataFrame, feature_cols: list[str]):
     missing = [c for c in feature_cols if c not in df.columns]
     if missing:
         raise ValueError(f"Colunas ausentes no DataFrame: {missing}")
 
+    for col in ("latitude", "longitude"):
+        if col not in df.columns:
+            raise ValueError(f"Coluna '{col}' é necessária para separar os folds espaciais.")
+
     X = df[feature_cols].copy()
     y = df["presence"].copy()
+    coords = df[["latitude", "longitude"]].copy()
 
     mask = X.notna().all(axis=1)
-    X, y = X[mask], y[mask]
-    print(X)
-    X_presence = X[y == 1]
-    X_absence_pool = X.drop(index=X_presence.index)
-    print(f"Registros de presença: {len(X_presence)}")
+    X, y, coords = X[mask], y[mask], coords[mask]
 
-    if len(X_presence) < 5:
-        raise ValueError(
-            f"Apenas {len(X_presence)} registros de presença. "
-            "São necessários pelo menos 5."
-        )
+    class_counts = y.value_counts()
+    n_presence = int(class_counts.get(1, 0))
+    n_background = int(class_counts.get(0, 0))
+    print(f"Registros usados: {len(X)} ({n_presence} presenças, {n_background} background)")
 
-    if len(X_absence_pool) == 0:
-        raise ValueError("Nenhum ponto de background disponível para amostragem.")
+    if n_presence < 5:
+        raise ValueError(f"Apenas {n_presence} registros de presença. São necessários pelo menos 5.")
+    if n_background < 5:
+        raise ValueError(f"Apenas {n_background} pontos de background. São necessários pelo menos 5.")
 
-    n_background = min(len(X_presence) * 2, len(X_absence_pool))
-    print(n_background)
-    if n_background < len(X_presence) * 2:
-        print(
-            f"Aviso: pool de ausência insuficiente para manter 80/20 "
-            f"({n_background} disponíveis, {len(X_presence) * 4} desejados)"
-        )
+    return X, y, coords
 
-    X_background = X_absence_pool.sample(n=n_background, random_state=42)
 
-    X_train = pd.concat([X_presence, X_background], ignore_index=True)
-    y_train = np.concatenate([
-        np.ones(len(X_presence)),
-        np.zeros(len(X_background))
-    ])
+def _build_pipeline(C: float = 1.0, use_quadratic: bool = True) -> Pipeline:
+    """
+    Pipeline que aproxima o MaxEnt clássico:
+      - StandardScaler para normalizar as variáveis ambientais;
+      - features quadráticas (sem termos de interação) para aproximar as
+        "quadratic features" usadas pelo MaxEnt original, permitindo
+        respostas em forma de sino em vez de só lineares;
+      - regressão logística com regularização L2, que é o equivalente de
+        máxima entropia com regularização (o próprio MaxEnt é, na prática,
+        uma regressão log-linear regularizada sobre esse tipo de feature
+        expandida).
+    """
+    steps = [("scaler", StandardScaler())]
+    if use_quadratic:
+        steps.append(("quad", PolynomialFeatures(degree=2, include_bias=False, interaction_only=False)))
+        steps.append(("scaler2", StandardScaler()))
+        
+    steps.append(("clf", LogisticRegression(C=C, max_iter=2000, random_state=42)))
+    return Pipeline(steps)
 
-    X_tr, X_test, y_tr, y_test = train_test_split(
-        X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+
+def run(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    selected_metrics: list[str] = [],
+    validation_mode: str = "spatial",
+    n_folds: int = 10,
+    regularization_c: float = 1.0,
+    use_quadratic_features: bool = True,
+) -> dict:
+    print("Running MaxEnt model (presença/background com features quadráticas + regularização L2)")
+
+    X, y, coords = _prepare(df, feature_cols)
+
+    def build_estimator():
+        return _build_pipeline(C=regularization_c, use_quadratic=use_quadratic_features)
+
+    cv_result = run_validation(
+        X, y, coords, build_estimator, selected_metrics,
+        validation_mode=validation_mode, n_folds=n_folds,
     )
 
-    scaler = StandardScaler()
-    X_tr_scaled = scaler.fit_transform(X_tr)
-    X_test_scaled = scaler.transform(X_test)
-
-    model = LogisticRegression(
-        penalty="l2",
-        C=1.0,
-        max_iter=1000,
-        random_state=42,
-    )
-
-    model.fit(X_tr_scaled, y_tr)
-    print("Coeficientes:", model.coef_)
-    print("Intercepto:", model.intercept_)
-
-    y_prob_test = model.predict_proba(X_test_scaled)[:, 1]
+    # Modelo final treinado com 100% dos dados — usado para gerar os mapas.
+    model = build_estimator()
+    model.fit(X, y)
 
     perm_result = permutation_importance(
-        model, X_test_scaled, y_test,
-        n_repeats=10, random_state=42, scoring="roc_auc"
+        model, X, y, n_repeats=10, random_state=42, scoring="roc_auc"
     )
     feature_importance = dict(zip(feature_cols, perm_result.importances_mean.tolist()))
-    feature_importance = dict(
-        sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
-    )
+    feature_importance = dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=True))
 
-    metrics = {}
-
-    if "auc" in selected_metrics:
-        metrics["auc"] = float(roc_auc_score(y_test, y_prob_test))
-
-    if "tss" in selected_metrics:
-        metrics["tss"] = calculate_tss(y_test, y_prob_test)
-
-    if "boyce" in selected_metrics:
-        metrics["boyce"] = calculate_boyce(y_test, y_prob_test)
-
-    print("Métricas:", metrics)
+    print("Métricas:", cv_result["metrics"])
     print("Importância das variáveis:")
     for feat, imp in feature_importance.items():
         print(f"  {feat}: {imp:.4f}")
 
     return {
         "model": model,
-        "scaler": scaler,
         "feature_importance": feature_importance,
         "feature_cols": feature_cols,
-        "metrics": metrics,
+        "metrics": cv_result["metrics"],
+        "metrics_std": cv_result["metrics_std"],
+        "fold_metrics": cv_result["fold_metrics"],
+        "validation_mode": cv_result["validation_mode"],
+        "n_folds": cv_result["n_folds"],
+        "report": cv_result["report"],
     }

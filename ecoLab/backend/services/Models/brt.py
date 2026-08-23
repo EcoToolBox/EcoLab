@@ -1,23 +1,23 @@
 from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, roc_auc_score
 import pandas as pd
-import numpy as np
-from .metrics import calculate_boyce, calculate_tss
+from .validation import run_validation
 
-def run(df: pd.DataFrame, feature_cols: list[str], selected_metrics: list[str] = []) -> dict:
 
-    print("Running BRT model")
-
+def _prepare(df: pd.DataFrame, feature_cols: list[str]):
     missing = [c for c in feature_cols if c not in df.columns]
     if missing:
         raise ValueError(f"Colunas ausentes no DataFrame: {missing}")
 
+    for col in ("latitude", "longitude"):
+        if col not in df.columns:
+            raise ValueError(f"Coluna '{col}' é necessária para separar os folds espaciais.")
+
     X = df[feature_cols].copy()
     y = df["presence"].copy()
+    coords = df[["latitude", "longitude"]].copy()
 
     mask = X.notna().all(axis=1)
-    X, y = X[mask], y[mask]
+    X, y, coords = X[mask], y[mask], coords[mask]
 
     class_counts = y.value_counts()
     print(f"Registros usados: {len(X)} ({class_counts.get(1, 0)} presenças, {class_counts.get(0, 0)} ausências)")
@@ -35,65 +35,57 @@ def run(df: pd.DataFrame, feature_cols: list[str], selected_metrics: list[str] =
             "São necessárias pelo menos 5 amostras por classe."
         )
 
-    try:
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-    except ValueError:
-        print("⚠️  Stratify falhou — usando split sem estratificação.")
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
+    return X, y, coords
+
+
+def run(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    selected_metrics: list[str] = [],
+    validation_mode: str = "random",
+    n_folds: int = 10,
+) -> dict:
+    print("Running BRT model")
+
+    X, y, coords = _prepare(df, feature_cols)
+
+    def build_estimator():
+        return GradientBoostingClassifier(
+            n_estimators=100,
+            learning_rate=0.05,
+            max_depth=5,
+            subsample=0.75,
+            min_samples_leaf=10,
+            random_state=42,
         )
 
-    for split_name, split_y in [("treino", y_train), ("teste", y_test)]:
-        if len(split_y.unique()) < 2:
-            raise ValueError(
-                f"Split de {split_name} ficou com apenas uma classe após divisão. "
-                "Aumente o número de amostras ou reduza o test_size."
-            )
-
-    model = GradientBoostingClassifier(
-        n_estimators=100,
-        learning_rate=0.05,
-        max_depth=5,
-        subsample=0.75,
-        min_samples_leaf=10,
-        random_state=42,
+    cv_result = run_validation(
+        X, y, coords, build_estimator, selected_metrics,
+        validation_mode=validation_mode, n_folds=n_folds,
     )
 
-    model.fit(X_train, y_train)
-
-    y_pred = model.predict(X_test)
-    y_prob = model.predict_proba(X_test)[:, 1]
-    y_test_np = y_test.values
-
-    report = classification_report(y_test, y_pred, output_dict=True)
+    # Modelo final treinado com 100% dos dados — usado para gerar os mapas.
+    model = build_estimator()
+    model.fit(X, y)
 
     feature_importance = pd.Series(
         model.feature_importances_, index=feature_cols
     ).sort_values(ascending=False).to_dict()
     feature_importance = {k: float(v) for k, v in feature_importance.items()}
 
-    metrics = {}
-
-    if "auc" in selected_metrics:
-        metrics["auc"] = float(roc_auc_score(y_test_np, y_prob))
-
-    if "tss" in selected_metrics:
-        metrics["tss"] = calculate_tss(y_test_np, y_prob)
-
-    if "boyce" in selected_metrics:
-        metrics["boyce"] = calculate_boyce(y_test_np, y_prob)
-
-    print("Métricas:", metrics)
+    print("Métricas:", cv_result["metrics"])
     print("Importância das variáveis:")
     for feat, imp in feature_importance.items():
         print(f"  {feat}: {imp:.4f}")
 
     return {
         "model": model,
-        "report": report,
+        "report": cv_result["report"],
         "feature_importance": feature_importance,
         "feature_cols": feature_cols,
-        "metrics": metrics,
+        "metrics": cv_result["metrics"],
+        "metrics_std": cv_result["metrics_std"],
+        "fold_metrics": cv_result["fold_metrics"],
+        "validation_mode": cv_result["validation_mode"],
+        "n_folds": cv_result["n_folds"],
     }

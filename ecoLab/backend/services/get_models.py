@@ -11,10 +11,23 @@ def run_models(models: dict):
     points          = models.get("points", None)
     country         = country.get("ingles", None)
     envGridData     = models.get("envGridData", [])
-
+    print("14")
     selected_models  = modelsData.get("selectedModels", [])
     presence_type    = modelsData.get("presenceType", [])
     selected_metrics = modelsData.get("selectedMetrics", [])
+
+    # Validação: aleatória (padrão, uso genérico) ou espacial (K-means por
+    # coordenadas). backgroundRatio controla quantos pontos de background por
+    # presença (padrão 2:1). backgroundSource é informativo: "grid_random"
+    # usa o grid gerado automaticamente; "provided" reflete que o usuário
+    # enviou sua própria planilha ambiental (envGridData), que já é usada
+    # como grid/background quando presente.
+    validation_mode  = modelsData.get("validationMode", "random")
+    n_folds          = int(modelsData.get("nFolds", 10) or 10)
+    background_ratio = float(modelsData.get("backgroundRatio", 2) or 2)
+    background_source = modelsData.get("backgroundSource", "grid_random")
+    if validation_mode not in ("random", "spatial"):
+        validation_mode = "random"
 
     selected_species_names = [s.get("name") for s in selectedSpecies] if selectedSpecies else []
 
@@ -58,46 +71,65 @@ def run_models(models: dict):
                     "id", "country", "day", "month", "scientificName", "species", "taxon", "name", "source"}
                                     
     if presence_type == "presence_only":
-        finalData["presence"] = 1
         features = [col for col in finalData.columns if col not in not_features]
         if not features:
             raise ValueError("Nenhuma variável ambiental foi encontrada para treinar o modelo.")
 
-        # Monta background com presence=0 usando o grid do país
-        backgroundData["presence"] = 0
-        # background_sample = backgroundData[features].copy()
-        presence_cols = features + ["presence", "latitude", "longitude"]
-        presence_only_df = pd.concat(
-            [finalData[presence_cols], backgroundData[presence_cols]],
-            ignore_index=True
+        # Presença/background: mantém 100% das ocorrências e amostra
+        # background do grid ambiental na razão configurada (padrão 2:1).
+        # Esses pontos de background NÃO são "ausências reais".
+        presence_only_df = create_absence.build_presence_dataframe(
+            backgroundData, finalData, background_ratio=background_ratio,
         )
         if "maxent" not in selected_models:
             raise ValueError("MaxEnt deve ser selecionado para dados de presença apenas.")
-        results["maxent"] = maxent.run(presence_only_df, features, selected_metrics)
+        results["maxent"] = maxent.run(
+            presence_only_df, features, selected_metrics,
+            validation_mode=validation_mode, n_folds=n_folds,
+        )
         maps = create_model_maps.generate_model_maps(
-            results, presence_only_df, country, species_name=selected_species_names[0] if selected_species_names else None
+            results, backgroundData, presence_only_df, country,
+            species_name=selected_species_names[0] if selected_species_names else None,
         )
         return maps
         
     if len(selected_species_names) <= 1:
-        
-        data_with_absences = create_absence.build_presence_dataframe(backgroundData, finalData)
+        print("83")
+        data_with_absences = create_absence.build_presence_dataframe(
+            backgroundData, finalData, background_ratio=background_ratio,
+        )
         features = [col for col in data_with_absences.columns if col not in not_features]
         if not features:
             raise ValueError("Nenhuma variável ambiental foi encontrada para treinar o modelo.")
         model_errors = []
         for model in selected_models:
+            print("90")
             try:
                 if model == "gam":
-                    results["gam"] = gam.run(data_with_absences, features, selected_metrics)
+                    results["gam"] = gam.run(
+                        data_with_absences, features, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
                 elif model == "maxent":
-                    results["maxent"] = maxent.run(data_with_absences, features, selected_metrics)
+                    results["maxent"] = maxent.run(
+                        data_with_absences, features, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
                 elif model == "random_forest":
-                    results["random_forest"] = random_forest.run(data_with_absences, features, selected_metrics)
+                    results["random_forest"] = random_forest.run(
+                        data_with_absences, features, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
                 elif model == "svm":
-                    results["svm"] = svm.run(data_with_absences, features, selected_metrics)
+                    results["svm"] = svm.run(
+                        data_with_absences, features, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
                 elif model == "brt":
-                    results["brt"] = brt.run(data_with_absences, features, selected_metrics)
+                    results["brt"] = brt.run(
+                        data_with_absences, features, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
             except Exception as e:
                 print(f"  Erro ao rodar {model}: {e}")
                 model_errors.append(f"{model}: {e}")
@@ -107,6 +139,7 @@ def run_models(models: dict):
 
         maps = create_model_maps.generate_model_maps(
             results,
+            backgroundData,
             data_with_absences,
             country,
             species_name=selected_species_names[0] if selected_species_names else None,
@@ -162,12 +195,20 @@ def run_models(models: dict):
 
         bg_for_species = backgroundData.copy()
         data_with_absences = create_absence.build_presence_dataframe(
-            grid_df=bg_for_species, occurrences=species_finalData
+            grid_df=bg_for_species, occurrences=species_finalData,
+            background_ratio=background_ratio,
         )
 
         for col in species_interaction_cols:
             if col in data_with_absences.columns:
                 data_with_absences[col] = data_with_absences[col].fillna(0)
+            # O grid de predição também precisa dessas colunas de interação
+            # (0 = sem interação registrada nessa célula), já que ele é
+            # usado diretamente para prever em cada célula do grid.
+            if col not in bg_for_species.columns:
+                bg_for_species[col] = 0
+            else:
+                bg_for_species[col] = bg_for_species[col].fillna(0)
         if "species" not in data_with_absences.columns:
             data_with_absences["species"] = species_name
         species_results = {}
@@ -175,15 +216,30 @@ def run_models(models: dict):
         for model in selected_models:
             try:
                 if model == "gam":
-                    species_results["gam"] = gam.run(data_with_absences, features_for_species, selected_metrics)
+                    species_results["gam"] = gam.run(
+                        data_with_absences, features_for_species, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
                 elif model == "maxent":
-                    species_results["maxent"] = maxent.run(data_with_absences, features_for_species, selected_metrics)
+                    species_results["maxent"] = maxent.run(
+                        data_with_absences, features_for_species, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
                 elif model == "random_forest":
-                    species_results["random_forest"] = random_forest.run(data_with_absences, features_for_species, selected_metrics)
+                    species_results["random_forest"] = random_forest.run(
+                        data_with_absences, features_for_species, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
                 elif model == "svm":
-                    species_results["svm"] = svm.run(data_with_absences, features_for_species, selected_metrics)
+                    species_results["svm"] = svm.run(
+                        data_with_absences, features_for_species, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
                 elif model == "brt":
-                    species_results["brt"] = brt.run(data_with_absences, features_for_species, selected_metrics)
+                    species_results["brt"] = brt.run(
+                        data_with_absences, features_for_species, selected_metrics,
+                        validation_mode=validation_mode, n_folds=n_folds,
+                    )
             except Exception as e:
                 print(f"  Erro ao rodar {model} para {species_name}: {e}")
                 model_errors.append(f"{model}: {e}")
@@ -195,7 +251,7 @@ def run_models(models: dict):
         all_warnings.extend(f"{species_name}: {error}" for error in model_errors)
 
         species_maps = create_model_maps.generate_model_maps(
-            species_results, data_with_absences, country,
+            species_results, bg_for_species, data_with_absences, country,
             species_name=species_name,
         )
 
