@@ -1,225 +1,258 @@
-name: Build EcoLab
+# ─────────────────────────────────────────────────────────────────────────────
+#  EcoLab · Build & Release
+#
+#  • PR ou push na main  → compila e testa os 3 instaladores
+#  • push na main        → atualiza o pré-release "nightly" (versão de teste)
+#  • tag vX.Y.Z          → publica a release oficial (python scripts/release.py X.Y.Z)
+#  • Mudou só .md/docs   → nem roda
+# ─────────────────────────────────────────────────────────────────────────────
+name: Build & Release
 
 on:
   push:
     branches: [main]
+    tags: ["v*.*.*"]
+    paths-ignore: ["**.md", "docs/**", "CITATION.cff", ".vscode/**", ".idea/**"]
   pull_request:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**", "CITATION.cff", ".vscode/**", ".idea/**"]
   workflow_dispatch:
 
 concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   PYTHON_VERSION: "3.11"
   NODE_VERSION: "20"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
-  build-windows:
-    name: Windows installer
+  # ── 1. Descobre a versão (fonte única: arquivo VERSION) ───────────────────
+  version:
+    name: Versão
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      numeric: ${{ steps.v.outputs.numeric }}
+      channel: ${{ steps.v.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          base="$(tr -d '[:space:]' < VERSION)"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/v}"
+            if [[ "$tag" != "$base" ]]; then
+              echo "::error::A tag v$tag não bate com o arquivo VERSION ($base). Use: python scripts/release.py $tag"
+              exit 1
+            fi
+            version="$base"; channel="stable"
+          else
+            version="$base-dev.$GITHUB_RUN_NUMBER"; channel="nightly"
+          fi
+          {
+            echo "version=$version"
+            echo "numeric=$base"
+            echo "channel=$channel"
+          } >> "$GITHUB_OUTPUT"
+          echo "### 🌿 EcoLab \`$version\` ($channel)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 2. Frontend: compila uma vez, os 3 SOs reaproveitam ───────────────────
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ecoLab/frontend/package-lock.json
+      - name: npm ci + build
+        working-directory: ecoLab/frontend
+        env:
+          CI: "false"
+          GENERATE_SOURCEMAP: "false"
+        run: npm ci --no-audit --no-fund && npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: ecoLab/frontend/build
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── 3. Windows ────────────────────────────────────────────────────────────
+  windows:
+    name: Windows
+    needs: [version, frontend]
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: frontend-build, path: ecoLab/frontend/build }
       - uses: actions/setup-python@v5
         with:
-          python-version: "${{ env.PYTHON_VERSION }}"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "${{ env.NODE_VERSION }}"
-          cache: npm
-          cache-dependency-path: ecoLab/frontend/package-lock.json
-      - name: Build frontend
-        working-directory: ecoLab/frontend
-        run: npm ci && npm run build
-        env:
-          CI: "false"
-      - name: Prepare build directories
-        shell: pwsh
-        run: New-Item -ItemType Directory -Force -Path ecoLab/maps | Out-Null
-      - name: Build executable
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-build.txt pyinstaller
-          python -m PyInstaller build/EcoLab.spec
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --no-progress -y
-      - name: Build installer
-        shell: pwsh
-        run: |
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" EcoLab_Installer.iss
-      - uses: actions/upload-artifact@v4
-        with:
-          name: EcoLab-Windows-Installer
-          path: installer_output/EcoLab_Setup.exe
-          if-no-files-found: error
-
-  build-linux:
-    name: Linux package
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "${{ env.PYTHON_VERSION }}"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "${{ env.NODE_VERSION }}"
-          cache: npm
-          cache-dependency-path: ecoLab/frontend/package-lock.json
-      - name: Install geospatial libraries
-        run: sudo apt-get update && sudo apt-get install -y libgdal-dev gdal-bin libgeos-dev libproj-dev libspatialindex-dev
-      - name: Build frontend
-        working-directory: ecoLab/frontend
-        run: npm ci && npm run build
-        env:
-          CI: "false"
-      - name: Build executable
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+      - name: PyInstaller
         run: |
           mkdir -p ecoLab/maps
-          python -m pip install --upgrade pip
           pip install -r requirements-build.txt pyinstaller
-          python -m PyInstaller build/EcoLab-Linux.spec
-      - name: Package .deb
+          python -m PyInstaller --noconfirm build/EcoLab.spec
+      - name: Inno Setup
+        shell: pwsh
         run: |
-          pkg=ecolab_0.1.1_amd64
-          mkdir -p "$pkg/DEBIAN" "$pkg/opt/ecolab" "$pkg/usr/share/applications" "$pkg/usr/share/icons/hicolor/256x256/apps"
-          cp dist/EcoLab "$pkg/opt/ecolab/EcoLab"
-          chmod +x "$pkg/opt/ecolab/EcoLab"
-          cp ecoLab/frontend/src/assets/EcoLab.png "$pkg/usr/share/icons/hicolor/256x256/apps/ecolab.png"
-          printf 'Package: ecolab\nVersion: 0.1.1\nSection: science\nPriority: optional\nArchitecture: amd64\nMaintainer: UTFPR\nDescription: EcoLab - Ecological Analysis Tool\n' > "$pkg/DEBIAN/control"
-          printf '[Desktop Entry]\nName=EcoLab\nExec=/opt/ecolab/EcoLab\nIcon=ecolab\nType=Application\nCategories=Science;Education;\nTerminal=false\n' > "$pkg/usr/share/applications/ecolab.desktop"
-          dpkg-deb --build "$pkg" EcoLab-Linux.deb
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q `
+            "/DAppVersion=${{ needs.version.outputs.version }}" `
+            "/DAppVersionNumeric=${{ needs.version.outputs.numeric }}" `
+            EcoLab_Installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Teste — instala em silêncio
+        shell: pwsh
+        run: |
+          $p = Start-Process installer_output\EcoLab-Windows-Setup.exe -Wait -PassThru `
+            -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/CURRENTUSER','/NORESTART','/DIR=C:\EcoLabTest'
+          if ($p.ExitCode -ne 0) { Write-Error "Instalador saiu com código $($p.ExitCode)"; exit 1 }
+          if (-not (Test-Path C:\EcoLabTest\EcoLab.exe)) { Write-Error "EcoLab.exe não foi instalado"; exit 1 }
+      - name: Teste — abre o app
+        run: bash scripts/ci/smoke-test.sh /c/EcoLabTest/EcoLab.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: EcoLab-Linux-Installer
-          path: EcoLab-Linux.deb
+          name: installer-windows
+          path: installer_output/EcoLab-Windows-Setup.exe
           if-no-files-found: error
 
-  build-macos:
-    name: macOS (${{ matrix.name }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-14
-            name: Apple Silicon
-            slug: apple-silicon
-    runs-on: ${{ matrix.runner }}
+  # ── 4. Linux ──────────────────────────────────────────────────────────────
+  linux:
+    name: Linux
+    needs: [version, frontend]
+    runs-on: ubuntu-22.04   # glibc mais antiga = roda em mais distros
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: frontend-build, path: ecoLab/frontend/build }
       - uses: actions/setup-python@v5
         with:
-          python-version: "${{ env.PYTHON_VERSION }}"
-      - uses: actions/setup-node@v4
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+      - name: Bibliotecas geoespaciais
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libgdal-dev gdal-bin libgeos-dev libproj-dev libspatialindex-dev
+      - name: PyInstaller
+        run: |
+          mkdir -p ecoLab/maps
+          pip install -r requirements-build.txt pyinstaller
+          python -m PyInstaller --noconfirm build/EcoLab-Linux.spec
+      - name: Pacote .deb
+        run: bash installer/linux/build-deb.sh "${{ needs.version.outputs.version }}"
+      - name: Teste — instala e abre
+        run: |
+          sudo apt-get install -y -qq ./EcoLab-Linux-amd64.deb
+          bash scripts/ci/smoke-test.sh /opt/ecolab/EcoLab
+      - uses: actions/upload-artifact@v4
         with:
-          node-version: "${{ env.NODE_VERSION }}"
-          cache: npm
-          cache-dependency-path: ecoLab/frontend/package-lock.json
-      - name: Install geospatial libraries
+          name: installer-linux
+          path: EcoLab-Linux-amd64.deb
+          if-no-files-found: error
+
+  # ── 5. macOS (Apple Silicon) ──────────────────────────────────────────────
+  macos:
+    name: macOS
+    needs: [version, frontend]
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: frontend-build, path: ecoLab/frontend/build }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+      - name: Bibliotecas geoespaciais
+        env: { HOMEBREW_NO_AUTO_UPDATE: "1", HOMEBREW_NO_INSTALL_CLEANUP: "1" }
         run: brew install gdal geos proj spatialindex create-dmg
-      - name: Build frontend
-        working-directory: ecoLab/frontend
-        run: npm ci && npm run build
+      - name: Ícone
+        run: bash installer/macos/build-dmg.sh icon
+      - name: PyInstaller
         env:
-          CI: "false"
-      - name: Build app bundle
+          ECOLAB_VERSION_NUMERIC: ${{ needs.version.outputs.numeric }}
         run: |
           mkdir -p ecoLab/maps
-          python -m pip install --upgrade pip setuptools
+          pip install --upgrade setuptools
           pip install -r requirements-build.txt pyinstaller
-          # pkg_resources é removido pelo setuptools recente; neutralizamos o
-          # runtime hook legado do PyInstaller apenas neste ambiente de build.
+          # setuptools novo removeu pkg_resources; neutraliza o runtime hook legado do PyInstaller
           python -c "import os, PyInstaller; open(os.path.join(os.path.dirname(PyInstaller.__file__), 'hooks', 'rthooks', 'pyi_rth_pkgres.py'), 'w').write('# disabled by EcoLab macOS build\n')"
-          python -m PyInstaller build/EcoLab-macOS.spec
-          test -d dist/EcoLab.app
-      - name: Package DMG
+          python -m PyInstaller --noconfirm build/EcoLab-macOS.spec
+      - name: DMG
+        run: bash installer/macos/build-dmg.sh dmg EcoLab-macOS-AppleSilicon.dmg
+      - name: Teste — monta e abre
         run: |
-          create-dmg --volname "EcoLab" --window-pos 200 120 --window-size 600 400 --icon-size 100 --icon "EcoLab.app" 175 190 --hide-extension "EcoLab.app" --app-drop-link 425 190 "EcoLab-macOS-${{ matrix.slug }}.dmg" dist/
+          hdiutil attach EcoLab-macOS-AppleSilicon.dmg -mountpoint /Volumes/EcoLab -nobrowse -quiet
+          bash scripts/ci/smoke-test.sh /Volumes/EcoLab/EcoLab.app/Contents/MacOS/EcoLab
+          hdiutil detach /Volumes/EcoLab -quiet || true
       - uses: actions/upload-artifact@v4
         with:
-          name: EcoLab-macOS-${{ matrix.slug }}-Installer
-          path: EcoLab-macOS-${{ matrix.slug }}.dmg
+          name: installer-macos
+          path: EcoLab-macOS-AppleSilicon.dmg
           if-no-files-found: error
 
-  test-linux:
-    name: Linux startup test
-    needs: build-linux
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: EcoLab-Linux-Installer
-          path: artifact
-      - name: Install and start EcoLab
-        run: |
-          sudo dpkg -i artifact/EcoLab-Linux.deb
-          ECOLAB_OPEN_BROWSER=0 /opt/ecolab/EcoLab > /tmp/ecolab.log 2>&1 &
-          echo $! > /tmp/ecolab.pid
-          trap 'kill $(cat /tmp/ecolab.pid) 2>/dev/null || true; cat /tmp/ecolab.log || true' EXIT
-          for attempt in $(seq 1 30); do
-            curl --fail --silent http://127.0.0.1:8000/api/config && exit 0
-            sleep 2
-          done
-          exit 1
-
-  test-macos:
-    name: macOS startup test (${{ matrix.name }})
-    needs: build-macos
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-14
-            name: Apple Silicon
-            slug: apple-silicon
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: "EcoLab-macOS-${{ matrix.slug }}-Installer"
-          path: artifact
-      - name: Mount and start EcoLab
-        run: |
-          hdiutil attach "artifact/EcoLab-macOS-${{ matrix.slug }}.dmg" -mountpoint /Volumes/EcoLab -nobrowse -quiet
-          ECOLAB_OPEN_BROWSER=0 /Volumes/EcoLab/EcoLab.app/Contents/MacOS/EcoLab > /tmp/ecolab.log 2>&1 &
-          echo $! > /tmp/ecolab.pid
-          trap 'kill $(cat /tmp/ecolab.pid) 2>/dev/null || true; hdiutil detach /Volumes/EcoLab -quiet || true; cat /tmp/ecolab.log || true' EXIT
-          for attempt in $(seq 1 30); do
-            curl --fail --silent http://127.0.0.1:8000/api/config && exit 0
-            sleep 2
-          done
-          exit 1
-
+  # ── 6. Publica no GitHub Releases ─────────────────────────────────────────
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build-windows, build-linux, build-macos, test-linux, test-macos]
+    name: Publicar
+    if: github.event_name == 'push'
+    needs: [version, windows, linux, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      CHANNEL: ${{ needs.version.outputs.channel }}
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: EcoLab-Windows-Installer
-          path: artifacts/windows
-      - uses: actions/download-artifact@v4
-        with:
-          name: EcoLab-Linux-Installer
-          path: artifacts/linux
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: EcoLab-macOS-*-Installer
-          path: artifacts/macos
+          pattern: installer-*
+          path: dist
           merge-multiple: true
-      - name: Create prerelease
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Latest Build
-          prerelease: true
-          generate_release_notes: true
-          files: |
-            artifacts/windows/EcoLab_Setup.exe
-            artifacts/linux/EcoLab-Linux.deb
-            artifacts/macos/*.dmg
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum EcoLab-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Nightly (pré-release de teste)
+        if: env.CHANNEL == 'nightly'
+        run: |
+          # recria do zero para a tag apontar para o commit atual
+          gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
+          gh release delete latest  --cleanup-tag --yes 2>/dev/null || true   # nome antigo, só limpeza
+          gh release create nightly dist/* \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "🌙 Nightly $VERSION" \
+            --notes "Versão de teste gerada automaticamente a partir da \`main\` (commit ${GITHUB_SHA::7}). Pode conter bugs, para uso geral prefira a [última versão estável](https://github.com/$GH_REPO/releases/latest)."
+
+      - name: Release oficial
+        if: env.CHANNEL == 'stable'
+        run: |
+          gh release create "v$VERSION" dist/* \
+            --verify-tag --latest --generate-notes \
+            --title "EcoLab $VERSION"
+
+      - name: Resumo
+        run: |
+          tag=$([ "$CHANNEL" = stable ] && echo "v$VERSION" || echo nightly)
+          base="https://github.com/$GH_REPO/releases/download/$tag"
+          {
+            echo "### 📦 Instaladores publicados ($tag)"
+            echo "| Sistema | Download |"
+            echo "|---|---|"
+            echo "| 🪟 Windows | [EcoLab-Windows-Setup.exe]($base/EcoLab-Windows-Setup.exe) |"
+            echo "| 🐧 Linux (.deb) | [EcoLab-Linux-amd64.deb]($base/EcoLab-Linux-amd64.deb) |"
+            echo "| 🍎 macOS (M1/M2/M3) | [EcoLab-macOS-AppleSilicon.dmg]($base/EcoLab-macOS-AppleSilicon.dmg) |"
+          } >> "$GITHUB_STEP_SUMMARY"
