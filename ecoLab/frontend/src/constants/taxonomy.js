@@ -1,4 +1,5 @@
 export const PERFORMANCE_WARNING_THRESHOLD = 10;
+export const MANUAL_SPECIES_LIMIT = 50;
 
 export const RANK_LABELS = {
   KINGDOM: "Reino",

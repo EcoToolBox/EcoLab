@@ -6,14 +6,25 @@ import pandas as pd
 ALLOWED_EXTENSIONS = {"csv", "tsv", "txt", "xlsx", "xls"}
 
 
-def _read_spreadsheet(file_bytes: bytes, filename: str) -> pd.DataFrame:
+def _read_spreadsheet(file_bytes: bytes, filename: str, usecols: list[str] | None = None) -> pd.DataFrame:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ALLOWED_EXTENSIONS:
         raise ValueError(f"Formato de arquivo não suportado: .{ext}")
 
+    # usecols restringe a leitura só às colunas que o mapeamento realmente usa.
+    # Numa planilha de ocorrência típica (20+ colunas) isso já corta boa parte
+    # do tempo de parsing, porque nem os valores das colunas descartadas
+    # chegam a ser convertidos para o DataFrame.
     if ext in ("xlsx", "xls"):
         # requires openpyxl (xlsx) / xlrd (legacy xls) to be installed
-        return pd.read_excel(io.BytesIO(file_bytes))
+        try:
+            return pd.read_excel(io.BytesIO(file_bytes), usecols=usecols)
+        except ValueError:
+            # alguma coluna de 'usecols' não existe no arquivo: lê tudo e deixa
+            # o caller reportar quais colunas estão faltando.
+            if usecols is not None:
+                return pd.read_excel(io.BytesIO(file_bytes))
+            raise
 
     # O cabeçalho não deve conter vírgulas decimais; por isso ele é a fonte mais
     # confiável para descobrir o separador. Usar o arquivo inteiro faria o
@@ -28,12 +39,25 @@ def _read_spreadsheet(file_bytes: bytes, filename: str) -> pd.DataFrame:
         if counts[delimiter] == 0:
             raise ValueError("Não foi possível identificar o separador das colunas.")
 
-    return pd.read_csv(io.StringIO(text), sep=delimiter, engine="python")
+    # engine="python" era usado sem necessidade: o Sniffer sempre devolve um
+    # delimitador de um único caractere, e o engine C do pandas (o padrão)
+    # lida com isso tranquilamente sendo muito mais rápido — a diferença é
+    # brutal em planilhas de dezenas de milhares de linhas como essa.
+    try:
+        return pd.read_csv(
+            io.StringIO(text), sep=delimiter, usecols=usecols, low_memory=False
+        )
+    except ValueError:
+        if usecols is not None:
+            return pd.read_csv(io.StringIO(text), sep=delimiter, low_memory=False)
+        raise
 
 
 def _parse_coordinate(series: pd.Series) -> pd.Series:
     """Aceita coordenadas com ponto ou vírgula decimal, inclusive texto do Excel."""
-    values = series.astype("string").str.strip()
+    # astype(str) (objeto Python puro) é bem mais rápido aqui que o dtype
+    # "string" (StringDtype) do pandas, que tem overhead de boxing por valor.
+    values = series.astype(str).str.strip()
     values = values.str.replace(" ", "", regex=False)
     # Coordenadas não usam separador de milhar. Se vierem dos formatos
     # brasileiros, a vírgula é necessariamente o separador decimal.
@@ -60,6 +84,24 @@ def _validate_coordinates(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     return df[~invalid_mask].reset_index(drop=True), errors
 
 
+_PRESENCE_VALUES = {
+    "1": 1, "1.0": 1, "true": 1, "presence": 1, "presenca": 1, "presença": 1, "p": 1,
+    "0": 0, "0.0": 0, "false": 0, "background": 0, "absence": 0, "ausencia": 0, "ausência": 0, "bg": 0,
+}
+
+
+def _parse_presence(series: pd.Series) -> tuple[pd.Series, list[str]]:
+    """Converte a coluna de presença para 1 (presença) / 0 (background); valores inválidos viram NaN."""
+    parsed = series.astype(str).str.strip().str.lower().map(_PRESENCE_VALUES)
+    n_invalid = int(parsed.isna().sum())
+    errors = []
+    if n_invalid:
+        errors.append(
+            f"{n_invalid} linha(s) descartada(s) por valor de presença inválido (use 1 para presença e 0 para background)."
+        )
+    return parsed, errors
+
+
 def _to_records(df: pd.DataFrame) -> list[dict]:
     # mirrors the NaN/inf -> None handling used in get_environment.py so the
     # payload is always JSON-serializable
@@ -72,12 +114,13 @@ def parse_occurrence_upload(file_bytes: bytes, filename: str, mapping: dict) -> 
     mapping: {"species": "<col>", "latitude": "<col>", "longitude": "<col>", "eventDate": "<col>"}
     Only entries with a non-empty column name are used; the rest are ignored.
     """
+    mapped_fields = {field: col for field, col in mapping.items() if col}
+    wanted_cols = list(dict.fromkeys(mapped_fields.values())) or None
+
     try:
-        df = _read_spreadsheet(file_bytes, filename)
+        df = _read_spreadsheet(file_bytes, filename, usecols=wanted_cols)
     except Exception as e:
         return {"success": False, "errors": [f"Não foi possível ler o arquivo: {str(e)}"], "data": []}
-
-    mapped_fields = {field: col for field, col in mapping.items() if col}
 
     missing_cols = [col for col in mapped_fields.values() if col not in df.columns]
     if missing_cols:
@@ -94,11 +137,21 @@ def parse_occurrence_upload(file_bytes: bytes, filename: str, mapping: dict) -> 
         df = df[df["species"].notna() & (df["species"].astype(str).str.strip() != "")]
 
     df, coord_errors = _validate_coordinates(df)
+
+    presence_errors = []
+    if "presence" in df.columns:
+        df["presence"], presence_errors = _parse_presence(df["presence"])
+        df = df[df["presence"].notna()].reset_index(drop=True)
+        df["presence"] = df["presence"].astype(int)
+
+    if "bufferKm" in df.columns:
+        df["bufferKm"] = pd.to_numeric(df["bufferKm"], errors="coerce")
+
     df["source"] = "user_upload"
 
     return {
         "success": True,
-        "errors": coord_errors,
+        "errors": coord_errors + presence_errors,
         "imported": len(df),
         "data": _to_records(df),
     }
@@ -109,14 +162,15 @@ def parse_environment_upload(file_bytes: bytes, filename: str, mapping: dict, va
     mapping: {"latitude": "<col>", "longitude": "<col>"}
     variables: [{"column": "<col in the spreadsheet>", "name": "<name used by the models>"}, ...]
     """
-    try:
-        df = _read_spreadsheet(file_bytes, filename)
-    except Exception as e:
-        return {"success": False, "errors": [f"Não foi possível ler o arquivo: {str(e)}"], "data": []}
-
     lat_col = mapping.get("latitude")
     lon_col = mapping.get("longitude")
     var_columns = [v.get("column") for v in variables if v.get("column")]
+    wanted_cols = list(dict.fromkeys(c for c in [lat_col, lon_col, *var_columns] if c)) or None
+
+    try:
+        df = _read_spreadsheet(file_bytes, filename, usecols=wanted_cols)
+    except Exception as e:
+        return {"success": False, "errors": [f"Não foi possível ler o arquivo: {str(e)}"], "data": []}
 
     missing_cols = [c for c in [lat_col, lon_col, *var_columns] if c and c not in df.columns]
     if missing_cols:

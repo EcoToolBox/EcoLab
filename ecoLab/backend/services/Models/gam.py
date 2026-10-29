@@ -11,22 +11,35 @@ class _GAMEstimator:
     devolvendo duas colunas, como no padrão sklearn).
     """
 
-    def __init__(self, n_features: int):
+    def __init__(self, n_features: int, lam=None):
         terms = s(0)
         for i in range(1, n_features):
             terms += s(i)
         self.gam = LogisticGAM(terms)
+        # lam fixo = só ajusta (rápido); sem lam = busca o lam (gridsearch,
+        # 11 ajustes). A busca é feita uma vez no conjunto completo e o lam
+        # escolhido é reaproveitado nas repetições da validação.
+        self.lam = lam
+        if lam is not None:
+            self.gam.set_params(lam=lam)
 
     def fit(self, X, y):
         X_arr = X.values if hasattr(X, "values") else np.asarray(X)
         y_arr = y.values if hasattr(y, "values") else np.asarray(y)
-        self.gam.gridsearch(X_arr, y_arr, progress=False)
+        if self.lam is None:
+            self.gam.gridsearch(X_arr, y_arr, progress=False)
+            self.lam = self.gam.lam
+        else:
+            self.gam.fit(X_arr, y_arr)
         return self
 
     def predict_proba(self, X):
         X_arr = X.values if hasattr(X, "values") else np.asarray(X)
         p1 = self.gam.predict_proba(X_arr)
-        p1 = np.asarray(p1).reshape(-1)
+        # Com muitas variáveis o LogisticGAM pode estourar (overflow) e
+        # devolver NaN; isso quebrava as métricas, o mapa e a resposta.
+        p1 = np.nan_to_num(np.asarray(p1, dtype=float).reshape(-1), nan=0.5, posinf=1.0, neginf=0.0)
+        p1 = np.clip(p1, 0.0, 1.0)
         return np.column_stack([1 - p1, p1])
 
 
@@ -77,18 +90,23 @@ def run(
     X, y, coords = _prepare(df, feature_cols)
     n_features = len(feature_cols)
 
+    # Modelo final treinado com 100% dos dados (usado nos mapas). É aqui que
+    # se escolhe o lam (suavização); as repetições da validação reaproveitam
+    # esse lam em vez de refazer a busca a cada repetição (~5x mais rápido).
+    final_estimator = _GAMEstimator(n_features).fit(X, y)
+    lam = final_estimator.lam
+
     def build_estimator():
-        return _GAMEstimator(n_features)
+        return _GAMEstimator(n_features, lam=lam)
 
     cv_result = run_validation(
         X, y, coords, build_estimator, selected_metrics,
         validation_mode=validation_mode, n_folds=n_folds,
     )
 
-    # Modelo final treinado com 100% dos dados — usado para gerar os mapas.
-    final_estimator = build_estimator()
-    final_estimator.fit(X, y)
     model = final_estimator.gam
+    if not np.isfinite(np.asarray(model.coef_, dtype=float)).all():
+        print("  Aviso: o GAM não convergiu (coeficientes infinitos/NaN); as previsões podem não ser confiáveis.")
 
     feature_importance = {}
     for i, col in enumerate(feature_cols):
@@ -96,7 +114,8 @@ def run(
         Xi = np.tile(X.mean().values, (100, 1))
         Xi[:, i] = xi
         contrib = model.partial_dependence(term=i, X=Xi)
-        feature_importance[col] = float(np.std(contrib))
+        value = float(np.nanstd(contrib)) if np.isfinite(contrib).any() else 0.0
+        feature_importance[col] = value if np.isfinite(value) else 0.0
     feature_importance = dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=True))
 
     print("Importância das variáveis (std da contribuição):")
@@ -111,6 +130,7 @@ def run(
         "metrics": cv_result["metrics"],
         "metrics_std": cv_result["metrics_std"],
         "fold_metrics": cv_result["fold_metrics"],
+        "oof": cv_result.get("oof"),
         "validation_mode": cv_result["validation_mode"],
         "n_folds": cv_result["n_folds"],
     }

@@ -1,0 +1,32 @@
+COMO INSTALAR O ECOLAB NO MAC
+=============================
+
+1. Arraste o ícone do EcoLab para a pasta "Applications" (Aplicativos).
+
+2. Na PRIMEIRA vez, o macOS pode bloquear o app porque ele ainda não é
+   assinado pela Apple. Para liberar:
+
+   • Abra a pasta Aplicativos, clique com o BOTÃO DIREITO no EcoLab e
+     escolha "Abrir". Na janela que aparecer, clique em "Abrir" de novo.
+
+   • Se não aparecer o botão "Abrir": vá em Ajustes do Sistema >
+     Privacidade e Segurança, role até o fim e clique em "Abrir Mesmo Assim".
+
+   • Se disser que o app "está danificado", abra o Terminal e cole:
+
+         xattr -cr /Applications/EcoLab.app
+
+     Depois abra o EcoLab normalmente.
+
+3. O EcoLab abre no seu navegador (Safari, Chrome...) e aparece um ícone
+   de folha na barra de menus, lá em cima perto do relógio. Por ele você
+   reabre o EcoLab, abre a pasta de resultados ou clica em "Sair".
+
+Dúvidas ou problemas: https://github.com/EcoToolBox/EcoLab/issues
+
+
+HOW TO INSTALL ON MAC (English)
+-------------------------------
+Drag EcoLab to Applications. First launch: right-click EcoLab > Open > Open.
+If macOS says the app is "damaged", run in Terminal:
+    xattr -cr /Applications/EcoLab.app

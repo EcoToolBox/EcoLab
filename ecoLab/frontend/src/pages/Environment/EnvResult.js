@@ -19,6 +19,11 @@ const PHASE_MESSAGES = {
     "Processando índices de vegetação e clima...",
     "Quase lá! Calculando as variáveis ambientais...",
   ],
+  rasters: [
+    "Lendo os rasters no pixel de cada ocorrência...",
+    "Reamostrando os rasters para o grid de background e do mapa...",
+    "Rasters grandes podem levar alguns minutos...",
+  ],
   grid: [
     "Processando a planilha de variáveis ambientais...",
     "Montando o grid ambiental enviado por você...",
@@ -83,6 +88,8 @@ export default function EnvResult({
   environmentMode,
   envUpload,
   setEnvGridData,
+  rasterEnv,
+  setModelsData,
 }) {
   const [phase, setPhase] = useState(null);
   const [error, setError] = useState(null);
@@ -111,7 +118,7 @@ export default function EnvResult({
       }
 
       let enrichedOccurrences = occurrenceData;
-      if (selectedEnv.length > 0) {
+      if (selectedEnv.length > 0 && environmentMode !== "rasters") {
         setPhase("environment");
         const result = await environmentApi.getEnvVariables({
           data: occurrenceData,
@@ -157,6 +164,37 @@ export default function EnvResult({
         setOccurrenceData(enrichedOccurrences);
       }
 
+      if (environmentMode === "rasters") {
+        const folder = rasterEnv?.folder;
+        const files = rasterEnv?.files ?? [];
+        if (!folder || files.length === 0) {
+          throw new Error("Selecione a pasta e ao menos um raster na etapa de Ambiente.");
+        }
+        setPhase("rasters");
+        const sampled = await environmentApi.sampleRasters(folder, files, enrichedOccurrences);
+        enrichedOccurrences = withId(parseResult(sampled));
+        setOccurrenceData(enrichedOccurrences);
+
+        // O mesmo grid serve de fonte de background e de grid do mapa. Se o
+        // usuário já enviou um grid de predição próprio na tela de Modelos,
+        // ele é mantido.
+        const grid = await environmentApi.buildRasterGrid(folder, files, rasterEnv.resolution ?? 0.1);
+        setModelsData?.((prev) =>
+          prev?.predictionGridId
+            ? prev
+            : {
+                ...prev,
+                predictionGridId: grid.gridId,
+                predictionGrid: {
+                  gridId: grid.gridId,
+                  fileName: `rasters (${files.length}) a ${rasterEnv.resolution ?? 0.1}°`,
+                  rows: grid.rows,
+                  variables: grid.variables ?? [],
+                },
+              }
+        );
+      }
+
       setPhase("joining");
       if (!interactionConfig.skip) {
         const result = await interactionApi.searchInteractionOccurrence({
@@ -195,10 +233,11 @@ export default function EnvResult({
           {[
             { key: "interactions", label: "Interações" },
             { key: "environment",  label: "Variáveis Ambientais" },
+            { key: "rasters",      label: "Rasters" },
             { key: "grid",         label: "Grid do Usuário" },
             { key: "joining",      label: "Tabela Final" },
           ].map(({ key, label }) => {
-            const phases = ["interactions", "environment", "grid", "joining"];
+            const phases = ["interactions", "environment", "rasters", "grid", "joining"];
             const currentIdx = phases.indexOf(phase);
             const stepIdx    = phases.indexOf(key);
             const isDone     = stepIdx < currentIdx;

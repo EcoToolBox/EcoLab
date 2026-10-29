@@ -86,6 +86,7 @@ def run(
         "metrics": cv_result["metrics"],
         "metrics_std": cv_result["metrics_std"],
         "fold_metrics": cv_result["fold_metrics"],
+        "oof": cv_result.get("oof"),
         "validation_mode": cv_result["validation_mode"],
         "n_folds": cv_result["n_folds"],
     }

@@ -210,7 +210,7 @@ hiddenimports += [
 
 a = Analysis(
     [os.path.join(os.path.dirname(SPECPATH), 'scripts', 'run_exe.py')],
-    pathex=['.'],
+    pathex=[ROOT],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
@@ -229,7 +229,6 @@ exe = EXE(
     a.scripts,
     a.binaries,
     a.datas,
-    [('v', None, 'OPTION')],
     name='EcoLab',
     debug=False,
     bootloader_ignore_signals=False,

@@ -6,6 +6,8 @@
 
 *An open-source platform that automates biodiversity data collection, environmental variable extraction, and species distribution modeling.*
 
+[![Release](https://img.shields.io/github/v/release/EcoToolBox/EcoLab?label=download&color=345702)](https://github.com/EcoToolBox/EcoLab/releases/latest)
+[![Build](https://github.com/EcoToolBox/EcoLab/actions/workflows/build.yml/badge.svg)](https://github.com/EcoToolBox/EcoLab/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![React](https://img.shields.io/badge/React-Frontend-61DAFB?logo=react)
@@ -145,13 +147,31 @@ EcoLab has been developed as part of a Master's research project in Applied Comp
 
 # 📦 Installation
 
-Pre-built installers are available through the GitHub Releases page.
+Download the installer for your system. No Python, Node or admin password needed.
 
-Supported platforms:
+| System | Download | How to install |
+|---|---|---|
+| 🪟 **Windows 10/11** | [**EcoLab-Windows-Setup.exe**](https://github.com/EcoToolBox/EcoLab/releases/latest/download/EcoLab-Windows-Setup.exe) | Double-click and follow the steps. If Windows SmartScreen appears, click *More info → Run anyway*. |
+| 🍎 **macOS** (Apple Silicon M1–M4) | [**EcoLab-macOS-AppleSilicon.dmg**](https://github.com/EcoToolBox/EcoLab/releases/latest/download/EcoLab-macOS-AppleSilicon.dmg) | Open the `.dmg`, drag EcoLab to *Applications*. First launch: right-click → *Open*. Instructions are inside the `.dmg`. |
+| 🐧 **Linux** (Ubuntu/Debian) | [**EcoLab-Linux-amd64.deb**](https://github.com/EcoToolBox/EcoLab/releases/latest/download/EcoLab-Linux-amd64.deb) | `sudo apt install ./EcoLab-Linux-amd64.deb`, then open *EcoLab* from the app menu (or run `ecolab`). |
 
-- Windows
-- Linux
-- macOS
+EcoLab opens in your web browser. On Windows and macOS a 🌿 icon appears next to the clock: use it to reopen EcoLab, open the results folder or quit. On Linux it runs in a terminal window; close it to quit.
+
+<details>
+<summary><b>Run from source (developers)</b></summary>
+
+```bash
+git clone https://github.com/EcoToolBox/EcoLab.git && cd EcoLab
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cd ecoLab/frontend && npm ci && cd ../..
+python scripts/run.py        # backend :8000 + frontend :3000 with hot reload
+```
+
+Publishing a new version: see [docs/RELEASING.md](docs/RELEASING.md).
+</details>
+
+Test builds of the latest `main` are available as the [nightly pre-release](https://github.com/EcoToolBox/EcoLab/releases/tag/nightly).
 
 ---
 

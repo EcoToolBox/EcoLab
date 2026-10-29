@@ -207,3 +207,18 @@ ecoLab/backend/services/Models/teste.ipynb
 ecoLab/tifs/
 ecoLab/teste.ipynb
 ecoLab/env.csv
+data/*
+*.csv
+grid_predicao_brasil_cache/*
+ecoLab/prediction_grids/*
+scripts/download_santos_2022.py
+scripts/download_zhao_2025.py
+scripts/prepare_santos_2022.py
+scripts/build_prediction_grid.py
+ecoLab/teste.ipynb
+
+# EcoLab build outputs
+installer_output/
+build/EcoLab.icns
+EcoLab-*.deb
+EcoLab-*.dmg

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Box, Typography, Select, MenuItem, FormControl, InputLabel,
   Stack, Alert, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, CircularProgress,
+  TableHead, TableRow, Paper, CircularProgress, FormHelperText,
 } from "@mui/material";
 import StepActions from "../../components/StepActions";
 import { readSpreadsheetHeaders } from "../../utils/parseSpreadsheetHeaders";
@@ -12,6 +12,18 @@ const REQUIRED_FIELDS = [
   { key: "latitude",  label: "Latitude",         required: true },
   { key: "longitude", label: "Longitude",        required: true },
   { key: "eventDate", label: "Data do registro", required: false },
+  {
+    key: "presence",
+    label: "Presença / background (1/0)",
+    required: false,
+    helper: "Se sua planilha já traz o background (linhas com 0), ele é usado exatamente como está em vez de ser sorteado do grid.",
+  },
+  {
+    key: "bufferKm",
+    label: "Buffer de exclusão (km) por espécie",
+    required: false,
+    helper: "Distância mínima entre as pseudo-ausências e as presenças de cada espécie. Tem prioridade sobre o buffer único da tela de Modelos.",
+  },
 ];
 
 export default function OccurrenceColumnMapping({ selectedSpecies, occurrenceUpload, setOccurrenceUpload }) {
@@ -70,7 +82,7 @@ export default function OccurrenceColumnMapping({ selectedSpecies, occurrenceUpl
       {!loading && !error && (
         <>
           <Stack spacing={2} sx={{ width: "60%", mb: 3 }}>
-            {REQUIRED_FIELDS.map(({ key, label, required }) => (
+            {REQUIRED_FIELDS.map(({ key, label, required, helper }) => (
               <FormControl key={key} fullWidth size="small">
                 <InputLabel>{label}{required ? " *" : " (opcional)"}</InputLabel>
                 <Select
@@ -83,6 +95,7 @@ export default function OccurrenceColumnMapping({ selectedSpecies, occurrenceUpl
                     <MenuItem key={col} value={col}>{col}</MenuItem>
                   ))}
                 </Select>
+                {helper && <FormHelperText>{helper}</FormHelperText>}
               </FormControl>
             ))}
           </Stack>

@@ -6,14 +6,31 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import Checkbox from '@mui/material/Checkbox';
 import PopupsMsg from "./PopUp";
 import occurrenceApi from "../../services/occurrenceApi";
+import { MANUAL_SPECIES_LIMIT } from "../../constants/taxonomy";
 
 const ALL_SOURCES = ["gbif", "inaturalist", "specieslink"];
 
 export default function SourcesCheckBox({
     selectedSources, setSelectedSources, sourceConfig, setSourceConfig,
     occurrenceMode, setOccurrenceMode, occurrenceUpload, setOccurrenceUpload,
+    selectedSpecies,
 }) {
     const [showPassword, setShowPassword] = useState(false);
+    // Com mais de MANUAL_SPECIES_LIMIT espécies, buscar nas fontes externas
+    // faria uma consulta em massa; a única opção passa a ser subir a própria
+    // planilha. Antes o modo "sources"/"both" continuava selecionável aqui —
+    // só o botão de avançar ficava bloqueado — então dava pra marcar upload
+    // e mesmo assim ficar no modo "sources", e a planilha era ignorada
+    // silenciosamente (Results.js só lê o upload quando o modo é
+    // "upload"/"both").
+    const mustUpload = selectedSpecies?.length > MANUAL_SPECIES_LIMIT;
+
+    useEffect(() => {
+        if (mustUpload && occurrenceMode !== "upload") {
+            setOccurrenceMode("upload");
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mustUpload]);
 
     const handleFileSelect = (event) => {
         const file = event.target.files?.[0];
@@ -82,15 +99,25 @@ export default function SourcesCheckBox({
                 <Typography gutterBottom style={{ fontWeight: 600 }}>
                     Como você quer fornecer os dados de ocorrência?
                 </Typography>
+                {mustUpload && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Com mais de {MANUAL_SPECIES_LIMIT} espécies selecionadas, a busca nas fontes externas
+                        fica desabilitada. Suba sua própria planilha de ocorrências para continuar.
+                    </Typography>
+                )}
                 <RadioGroup
                     row
                     value={occurrenceMode}
                     onChange={(e) => setOccurrenceMode(e.target.value)}
                     sx={{ mb: 1 }}
                 >
-                    <FormControlLabel value="sources" control={<Radio />} label="Usar as fontes que fornecemos" />
+                    {!mustUpload && (
+                        <FormControlLabel value="sources" control={<Radio />} label="Usar as fontes que fornecemos" />
+                    )}
                     <FormControlLabel value="upload" control={<Radio />} label="Subir minha própria planilha" />
-                    <FormControlLabel value="both" control={<Radio />} label="Usar os dois" />
+                    {!mustUpload && (
+                        <FormControlLabel value="both" control={<Radio />} label="Usar os dois" />
+                    )}
                 </RadioGroup>
 
                 {(occurrenceMode === "upload" || occurrenceMode === "both") && (

@@ -1,4 +1,17 @@
+import numpy as np
 import pandas as pd
+
+EARTH_RADIUS_KM = 6371.0088
+
+
+def _outside_buffer(pool: pd.DataFrame, presences: pd.DataFrame, buffer_km: float) -> pd.DataFrame:
+    """Remove do pool os pontos a menos de buffer_km (distância geodésica) de alguma presença."""
+    from sklearn.neighbors import BallTree
+
+    pres = np.radians(presences[["latitude", "longitude"]].to_numpy(dtype=float))
+    cand = np.radians(pool[["latitude", "longitude"]].to_numpy(dtype=float))
+    dist, _ = BallTree(pres, metric="haversine").query(cand, k=1)
+    return pool[dist[:, 0] * EARTH_RADIUS_KM >= buffer_km]
 
 
 def build_presence_dataframe(
@@ -7,6 +20,7 @@ def build_presence_dataframe(
     presence_col: str = "presence",
     background_ratio: float = 1.0,
     background_df: pd.DataFrame = None,
+    exclusion_buffer_km: float = 0.0,
 ) -> pd.DataFrame:
     """
     Combina 100% das ocorrências válidas com pontos de background
@@ -22,6 +36,9 @@ def build_presence_dataframe(
     background_df: se fornecido, usa esse conjunto de background já
         pronto (ex.: background do artigo original) em vez de amostrar
         do grid ambiental gerado automaticamente.
+    exclusion_buffer_km: não sorteia pseudo-ausências a menos dessa
+        distância (km) de qualquer presença (ex.: Santos et al. 2022 usou
+        10x a distância máxima de voo da abelha). 0 = sem buffer.
     """
     occ_df = pd.DataFrame(occurrences) if not isinstance(occurrences, pd.DataFrame) else occurrences.copy()
     if occ_df.empty:
@@ -45,15 +62,17 @@ def build_presence_dataframe(
     n_presence = len(presence_df)
     n_background_target = max(1, round(background_ratio * n_presence))
 
-    if background_df is not None and not background_df.empty:
+    provided = background_df is not None and not background_df.empty
+    if provided:
         # Background já fornecido (ex.: pontos originais de um estudo/artigo).
-        # Usamos como veio; se houver mais pontos do que a razão pede,
-        # amostramos para respeitar background_ratio, mas nunca descartamos
-        # presenças.
+        # Usamos TODOS os pontos exatamente como vieram: o próprio arquivo
+        # já define a razão presença/background, então background_ratio é
+        # ignorado aqui (reamostrar mudaria o conjunto do estudo original).
         pool = background_df.copy()
         pool["latitude"] = pd.to_numeric(pool["latitude"], errors="coerce")
         pool["longitude"] = pd.to_numeric(pool["longitude"], errors="coerce")
         pool = pool.dropna(subset=["latitude", "longitude"])
+        n_background_target = len(pool)
         source = "background fornecido"
     else:
         if grid_df.empty:
@@ -65,11 +84,18 @@ def build_presence_dataframe(
 
         # Evita reaproveitar como background pontos que coincidem com
         # ocorrências reais.
-        occ_coords = set(zip(presence_df["latitude"].round(5), presence_df["longitude"].round(5)))
-        pool = pool[
-            ~pool.apply(lambda row: (round(row["latitude"], 5), round(row["longitude"], 5)) in occ_coords, axis=1)
-        ]
+        occ_keys = pd.MultiIndex.from_arrays(
+            [presence_df["latitude"].round(5), presence_df["longitude"].round(5)]
+        )
+        pool_keys = pd.MultiIndex.from_arrays([pool["latitude"].round(5), pool["longitude"].round(5)])
+        pool = pool[~pool_keys.isin(occ_keys)]
         source = "grid aleatório"
+
+        if exclusion_buffer_km and exclusion_buffer_km > 0 and not pool.empty:
+            before = len(pool)
+            pool = _outside_buffer(pool, presence_df, float(exclusion_buffer_km))
+            print(f"Buffer de exclusão de {exclusion_buffer_km:g} km: {before - len(pool)} pontos removidos do pool.")
+            source = f"grid aleatório fora de {exclusion_buffer_km:g} km das presenças"
 
     if pool.empty:
         raise ValueError("Não há pontos de background disponíveis fora das ocorrências.")
@@ -81,10 +107,19 @@ def build_presence_dataframe(
             f"desejado {n_background_target} (razão {background_ratio}:1)."
         )
 
-    background_sample = pool.sample(n=n_background, random_state=42).copy()
+    if provided:
+        background_sample = pool.copy()
+    else:
+        background_sample = pool.sample(n=n_background, random_state=42).copy()
     background_sample[presence_col] = 0
 
-    keep_cols = list(dict.fromkeys(list(grid_df.columns) + list(pool.columns))) + [presence_col]
+    keep_cols = list(dict.fromkeys(list(grid_df.columns) + list(pool.columns)))
+    if provided:
+        # As variáveis ambientais do background fornecido vêm nas próprias
+        # linhas (herdadas da planilha); garantimos que as presenças também
+        # mantenham as colunas que existirem nelas.
+        keep_cols = list(dict.fromkeys(keep_cols + list(presence_df.columns)))
+    keep_cols = [c for c in keep_cols if c != presence_col] + [presence_col]
     presence_df = presence_df[[column for column in keep_cols if column in presence_df.columns]]
     background_sample = background_sample[[column for column in keep_cols if column in background_sample.columns]]
 

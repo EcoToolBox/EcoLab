@@ -1,0 +1,6 @@
+# Scripts shell precisam de LF, senão quebram no runner Windows/Linux
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.bmp  binary
+*.png  binary
+*.ico  binary

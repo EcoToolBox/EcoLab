@@ -33,6 +33,11 @@ export const VALIDATION_MODES = [
     description: "Divide os dados em 80% treino / 20% teste de forma aleatória (estratificada). Recomendado para uso geral.",
   },
   {
+    value: "repeated",
+    label: "Aleatória repetida",
+    description: "Repete a divisão aleatória 80% treino / 20% teste várias vezes e mostra a média e o desvio das métricas. É o que o biomod2 faz (NbRunEval com DataSplit = 80).",
+  },
+  {
     value: "spatial",
     label: "Espacial",
     description: "Agrupa os pontos por coordenadas (K-means) em blocos geográficos e usa cada bloco como fold de teste. Reduz o otimismo causado por autocorrelação espacial — recomendado quando presenças e background estão espacialmente agrupados, ou para reproduzir estudos que usam essa abordagem.",

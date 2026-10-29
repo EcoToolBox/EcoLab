@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import SourcesCheckBox from "./Sources";
 import YearSlider from "./Year";
 import PlaceCountryOrMap from "./Place";
+import { MANUAL_SPECIES_LIMIT } from "../../constants/taxonomy";
 
 export default function Occurrences({
   selectedSpecies,
@@ -38,6 +39,9 @@ export default function Occurrences({
   const usesUpload = occurrenceMode === "upload" || occurrenceMode === "both";
 
   const disable = () => {
+    // Consultas grandes só podem continuar quando o usuário fornece a própria
+    // planilha de ocorrências, evitando buscas em massa nas fontes externas.
+    if (selectedSpecies.length > MANUAL_SPECIES_LIMIT && !occurrenceUpload.file) return true;
     if (usesSources) {
       if (selectedSources.length === 0) return true;
       if (
@@ -83,6 +87,7 @@ export default function Occurrences({
           setOccurrenceMode={setOccurrenceMode}
           occurrenceUpload={occurrenceUpload}
           setOccurrenceUpload={setOccurrenceUpload}
+          selectedSpecies={selectedSpecies}
         />
         {usesSources && (
           <>
@@ -105,7 +110,9 @@ export default function Occurrences({
         selectedSpecies={selectedSpecies}
         disableNext={disable()}
         disableHint={
-          usesUpload && (!occurrenceUpload.file && !place)
+          selectedSpecies.length > MANUAL_SPECIES_LIMIT && !occurrenceUpload.file
+            ? `Para continuar com mais de ${MANUAL_SPECIES_LIMIT} espécies, envie uma planilha de ocorrências.`
+            : usesUpload && (!occurrenceUpload.file && !place)
             ? "Adicione uma planilha com os dados de ocorrência e o país para prosseguir."
             : "Selecione ao menos uma fonte de dados (e as credenciais necessárias) para prosseguir."
         }

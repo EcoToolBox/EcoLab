@@ -4,7 +4,7 @@ import AutocompleteInput from "./AutocompleteInput";
 import TaxonomyTree from "./TaxonomyTree";
 import CustomWarning from "../../components/CustomWarning";
 import StepActions from "../../components/StepActions";
-import { PERFORMANCE_WARNING_THRESHOLD } from "../../constants/taxonomy";
+import { MANUAL_SPECIES_LIMIT, PERFORMANCE_WARNING_THRESHOLD } from "../../constants/taxonomy";
 import taxonomyApi from "../../services/taxonomyApi";
 
 function TabPanel({ children, value, index }) {
@@ -61,11 +61,6 @@ export default function SpeciesSearch({ selectedSpecies, setSelectedSpecies }) {
   const handleBulkAdd = async () => {
     const names = [...new Set(speciesList.split(/[\n,;]/).map((name) => name.trim()).filter(Boolean))];
     if (!names.length) return;
-    if (names.length > 50) {
-      setBulkMessage({ severity: "warning", text: "Envie no máximo 50 espécies por vez." });
-      return;
-    }
-
     setBulkLoading(true);
     setBulkMessage(null);
     const responses = await Promise.all(
@@ -105,6 +100,10 @@ export default function SpeciesSearch({ selectedSpecies, setSelectedSpecies }) {
 
       <CustomWarning show={selectedSpecies.length > PERFORMANCE_WARNING_THRESHOLD} 
       msg={`Você selecionou ${selectedSpecies.length} espécies. Consultas com muitas espécies podem apresentar lentidão. Considere reduzir a seleção para melhores resultados.`} />
+      <CustomWarning
+        show={selectedSpecies.length > MANUAL_SPECIES_LIMIT}
+        msg={`Para continuar com mais de ${MANUAL_SPECIES_LIMIT} espécies, envie uma planilha de ocorrências na próxima etapa.`}
+      />
 
       <Box
         sx={{
@@ -147,7 +146,7 @@ export default function SpeciesSearch({ selectedSpecies, setSelectedSpecies }) {
 
         <TabPanel value={activeTab} index={1}>
           <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.72)", mb: 1.5 }}>
-            Cole nomes científicos, um por linha (ou separados por vírgula). O sistema procura e adiciona os nomes reconhecidos.
+            Cole nomes científicos, um por linha (ou separados por vírgula). O sistema procura e adiciona os nomes reconhecidos. Para mais de {MANUAL_SPECIES_LIMIT} espécies, será necessário enviar uma planilha de ocorrências na próxima etapa.
           </Typography>
           <TextField
             fullWidth

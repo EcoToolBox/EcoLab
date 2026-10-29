@@ -8,7 +8,16 @@ from sklearn.model_selection import train_test_split
 
 from .metrics import calculate_boyce, calculate_tss
 
-VALID_MODES = {"random", "spatial"}
+VALID_MODES = {"random", "spatial", "repeated"}
+
+# Como o TSS é calculado: "max" = no limiar que maximiza o TSS (padrão do
+# biomod2 e da maioria dos artigos); "0.5" = limiar fixo de 0,5.
+TSS_MODE = "max"
+
+
+def set_tss_mode(mode: str | None):
+    global TSS_MODE
+    TSS_MODE = "0.5" if str(mode) == "0.5" else "max"
 
 
 def compute_metrics(y_true: np.ndarray, y_prob: np.ndarray, selected_metrics: list[str]) -> dict:
@@ -20,10 +29,19 @@ def compute_metrics(y_true: np.ndarray, y_prob: np.ndarray, selected_metrics: li
         except ValueError:
             metrics["auc"] = None
     if "tss" in selected_metrics:
-        metrics["tss"] = calculate_tss(y_true, y_prob)
+        metrics["tss"] = calculate_tss(y_true, y_prob, threshold=None if TSS_MODE == "max" else 0.5)
     if "boyce" in selected_metrics:
         metrics["boyce"] = calculate_boyce(y_true, y_prob)
     return metrics
+
+
+def _oof_entry(fold_id: int, index, y_true, y_prob) -> dict:
+    return {
+        "fold": int(fold_id),
+        "index": list(index),
+        "y": np.asarray(y_true).astype(int).tolist(),
+        "prob": np.asarray(y_prob, dtype=float).tolist(),
+    }
 
 
 def make_spatial_fold_labels(coords: pd.DataFrame, n_folds: int, random_state: int = 42) -> np.ndarray:
@@ -48,8 +66,11 @@ def run_validation(
     random_state: int = 42,
 ) -> dict:
     if validation_mode not in VALID_MODES:
-        raise ValueError(f"validation_mode inválido: {validation_mode!r}. Use 'random' ou 'spatial'.")
+        raise ValueError(f"validation_mode inválido: {validation_mode!r}. Use 'random', 'repeated' ou 'spatial'.")
 
+    if validation_mode == "repeated":
+        # n_folds = número de repetições do split aleatório 80/20
+        return _run_repeated_validation(X, y, build_estimator, selected_metrics, n_folds, random_state)
     if validation_mode == "spatial":
         return _run_spatial_validation(
             X, y, coords, build_estimator, selected_metrics, n_folds, random_state
@@ -90,6 +111,63 @@ def _run_random_validation(X, y, build_estimator, selected_metrics, random_state
         "metrics_std": None,
         "fold_metrics": None,
         "report": report,
+        # Previsões fora da amostra, por fold, para montar o ensemble com os
+        # mesmos dados de teste dos modelos individuais.
+        "oof": [_oof_entry(0, X_test.index, y_test, y_prob)],
+    }
+
+
+def _summarize_folds(fold_results, selected_metrics):
+    mean_metrics, std_metrics = {}, {}
+    for key in selected_metrics:
+        vals = [f[key] for f in fold_results if f.get(key) is not None]
+        mean_metrics[key] = float(np.mean(vals)) if vals else None
+        std_metrics[key] = float(np.std(vals)) if vals else None
+    return mean_metrics, std_metrics
+
+
+def _run_repeated_validation(X, y, build_estimator, selected_metrics, n_repeats, random_state) -> dict:
+    """Split aleatório 80/20 repetido n vezes (como o biomod2: NbRunEval x DataSplit=80)."""
+    n_repeats = max(2, int(n_repeats))
+    fold_results, oof, all_y, all_p = [], [], [], []
+    for rep in range(n_repeats):
+        seed = random_state + rep
+        try:
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=seed, stratify=y
+            )
+        except ValueError:
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=seed)
+        if y_train.nunique() < 2 or y_test.nunique() < 2:
+            print(f"  Repetição {rep + 1} ignorada: faltam as duas classes em treino/teste.")
+            continue
+        estimator = build_estimator()
+        estimator.fit(X_train, y_train)
+        y_prob = estimator.predict_proba(X_test)[:, 1]
+        fm = compute_metrics(y_test.to_numpy(), y_prob, selected_metrics)
+        fm["fold"] = rep
+        fm["n_test"] = int(len(y_test))
+        fold_results.append(fm)
+        oof.append(_oof_entry(rep, X_test.index, y_test, y_prob))
+        all_y.append(y_test.to_numpy())
+        all_p.append(y_prob)
+
+    if not fold_results:
+        raise ValueError("Nenhuma repetição do split aleatório ficou com as duas classes.")
+
+    mean_metrics, std_metrics = _summarize_folds(fold_results, selected_metrics)
+    report = classification_report(
+        np.concatenate(all_y), (np.concatenate(all_p) >= 0.5).astype(int), output_dict=True
+    )
+    print(f"Validação aleatória repetida: {len(fold_results)} x 80/20. Métricas médias: {mean_metrics}")
+    return {
+        "validation_mode": "repeated",
+        "n_folds": len(fold_results),
+        "metrics": mean_metrics,
+        "metrics_std": std_metrics,
+        "fold_metrics": fold_results,
+        "report": report,
+        "oof": oof,
     }
 
 
@@ -101,6 +179,7 @@ def _run_spatial_validation(X, y, coords, build_estimator, selected_metrics, n_f
 
     fold_results = []
     all_y_test, all_y_prob = [], []
+    oof = []
 
     for fold_id in sorted(set(labels)):
         test_mask = labels == fold_id
@@ -124,6 +203,7 @@ def _run_spatial_validation(X, y, coords, build_estimator, selected_metrics, n_f
 
         all_y_test.append(y_test_fold.to_numpy())
         all_y_prob.append(y_prob_fold)
+        oof.append(_oof_entry(int(fold_id), X[test_mask].index, y_test_fold, y_prob_fold))
 
     if not fold_results:
         raise ValueError(
@@ -155,4 +235,5 @@ def _run_spatial_validation(X, y, coords, build_estimator, selected_metrics, n_f
         "metrics_std": std_metrics,
         "fold_metrics": fold_results,
         "report": report,
+        "oof": oof,
     }

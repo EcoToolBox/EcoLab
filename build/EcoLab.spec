@@ -159,6 +159,12 @@ try:
 except Exception:
     pass
 
+# ── Ícone na bandeja (pystray escolhe o backend em tempo de execução) ─────────
+datas += [(os.path.join(ROOT, 'installer', 'linux', 'ecolab.png'), 'assets')]
+tmp = collect_all('pystray')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+hiddenimports += ['pystray._win32', 'PIL.Image', 'PIL.ImageDraw']
+
 # ── hidden imports adicionais ─────────────────────────────────────────────────
 hiddenimports += [
     'fastapi.middleware.cors',
@@ -203,7 +209,7 @@ hiddenimports += [
 
 a = Analysis(
     [os.path.join(os.path.dirname(SPECPATH), 'scripts', 'run_exe.py')],
-    pathex=['D:\\UTFPR\\Mestrado\\Projeto\\EcoLab'],
+    pathex=[ROOT],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
@@ -222,19 +228,19 @@ exe = EXE(
     a.scripts,
     a.binaries,
     a.datas,
-    [('v', None, 'OPTION')],
     name='EcoLab',
-    debug=True,
+    debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,  # sem janela preta: o EcoLab vive no ícone da bandeja
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
+    icon=os.path.join(ROOT, 'EcoLab.ico'),
     manifest=os.path.join(ROOT, 'EcoLab.manifest'),
     entitlements_file=None,
 )

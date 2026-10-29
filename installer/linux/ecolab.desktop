@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=EcoLab
+GenericName=Species Distribution Modeling
+GenericName[pt_BR]=Modelagem de Distribuição de Espécies
+Comment=Collect occurrences, environmental data and build SDM maps
+Comment[pt_BR]=Ocorrências, variáveis ambientais e mapas de distribuição de espécies
+Exec=/opt/ecolab/EcoLab
+Icon=ecolab
+Terminal=true
+Categories=Science;Education;Biology;
+Keywords=SDM;ecology;species;biodiversity;GBIF;ecologia;espécies;
+StartupNotify=false

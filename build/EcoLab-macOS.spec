@@ -165,6 +165,18 @@ try:
 except Exception:
     pass
 
+# ── Ícone na bandeja (pystray escolhe o backend em tempo de execução) ─────────
+datas += [(os.path.join(ROOT, 'installer', 'linux', 'ecolab.png'), 'assets')]
+tmp = collect_all('pystray')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+hiddenimports += ['pystray._darwin', 'PIL.Image', 'PIL.ImageDraw']
+for _mod in ('objc', 'AppKit', 'Foundation', 'Quartz', 'PyObjCTools'):
+    try:
+        tmp = collect_all(_mod)
+        datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+    except Exception:
+        pass
+
 # ── hidden imports adicionais ─────────────────────────────────────────────────
 hiddenimports += [
     'pkg_resources',
@@ -213,11 +225,11 @@ hiddenimports += [
 
 a = Analysis(
     [os.path.join(os.path.dirname(SPECPATH), 'scripts', 'run_exe.py')],
-    pathex=[],
+    pathex=[ROOT],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=['hooks'],
+    hookspath=[os.path.join(ROOT, 'hooks')],
     hooksconfig={},
     runtime_hooks=[os.path.join(os.path.dirname(SPECPATH), 'hooks', 'a_disable_pkg_resources_hook.py')],
     excludes=[],
@@ -232,7 +244,6 @@ exe = EXE(
     a.scripts,
     a.binaries,
     a.datas,
-    [('v', None, 'OPTION')],
     name='EcoLab',
     debug=False,
     bootloader_ignore_signals=False,
@@ -249,14 +260,21 @@ exe = EXE(
 )
 
 # ── Bundle .app (necessário para criar o .dmg) ────────────────────────────────
+# Versão vem do CI (ECOLAB_VERSION_NUMERIC) ou do arquivo VERSION na raiz.
+_VERSION = os.environ.get('ECOLAB_VERSION_NUMERIC') or open(os.path.join(ROOT, 'VERSION')).read().strip()
+_ICNS = os.path.join(ROOT, 'build', 'EcoLab.icns')
+
 app = BUNDLE(
     exe,
     name='EcoLab.app',
-    icon=None,                          # substitua por 'ecoLab/assets/icon.icns' se tiver
+    # Gerado no CI a partir de ecoLab/frontend/src/assets/EcoLab-Icon.png
+    icon=_ICNS if os.path.isfile(_ICNS) else None,
     bundle_identifier='br.edu.utfpr.ecolab',
     info_plist={
         'NSHighResolutionCapable': True,
-        'CFBundleShortVersionString': '1.0.0',
+        'CFBundleShortVersionString': _VERSION,
+        'CFBundleVersion': _VERSION,
+        'LSMinimumSystemVersion': '11.0',
         'CFBundleName': 'EcoLab',
         'CFBundleDisplayName': 'EcoLab',
     },

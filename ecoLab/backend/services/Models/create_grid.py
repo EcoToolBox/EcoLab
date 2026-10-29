@@ -20,6 +20,38 @@ _GRID_CACHE: dict[str, pd.DataFrame] = {}
 WORLD_BBOX = (-90, -180, 90, 180)
 RESOLUTION_DEG = 1 / 111
 
+# Grid de país inteiro (ou mundo) na resolução de ~1km vira facilmente
+# milhões de pontos (Brasil: ~8,75 milhões). Isso não é só lento — o passo
+# seguinte busca variáveis ambientais no GEE ponto a ponto/em lote pra cada
+# célula, e com esse volume o processo trava/esgota memória e a requisição
+# do frontend cai com "Failed to fetch". Isso só é usado quando não veio um
+# grid do usuário (envGridData); nesse caso, capamos a resolução pra manter
+# o grid num tamanho que o resto do pipeline consegue processar de fato.
+MAX_GRID_POINTS = 20_000
+
+
+def _capped_resolution(
+    lat_min: float, lat_max: float, lon_min: float, lon_max: float,
+    resolution_deg: float, max_points: int = MAX_GRID_POINTS,
+) -> float:
+    """Aumenta a resolução (células maiores) se a resolução pedida geraria,
+    pra essa área, mais que `max_points` pontos. Nunca deixa passar do limite."""
+    n_lat = max(1, int((lat_max - lat_min) / resolution_deg))
+    n_lon = max(1, int((lon_max - lon_min) / resolution_deg))
+    estimated_points = n_lat * n_lon
+    if estimated_points <= max_points:
+        return resolution_deg
+
+    scale = (estimated_points / max_points) ** 0.5
+    capped = resolution_deg * scale
+    print(
+        f"Resolução do grid ajustada de {resolution_deg:.5f}° para {capped:.5f}° "
+        f"para manter o grid abaixo de {max_points} pontos "
+        f"(estimativa na resolução original: {estimated_points} pontos)."
+    )
+    return capped
+
+
 @lru_cache(maxsize=None)
 def _load_world_shapefile():
     URL = "https://naturalearth.s3.amazonaws.com/110m_cultural/ne_110m_admin_0_countries.zip"
@@ -37,9 +69,10 @@ def get_country_grid(country_name: str, resolution_deg: float = RESOLUTION_DEG) 
         raise ValueError(f"País '{country_name}' não encontrado.")
     
     shape = country.union_all()
-    
+
     lon_min, lat_min, lon_max, lat_max = shape.bounds
-    
+    resolution_deg = _capped_resolution(lat_min, lat_max, lon_min, lon_max, resolution_deg)
+
     lats = np.arange(lat_min, lat_max, resolution_deg)
     lons = np.arange(lon_min, lon_max, resolution_deg)
     lons_grid, lats_grid = np.meshgrid(lons, lats)
@@ -69,6 +102,7 @@ def generate_grid_points(
         lat_min, lon_min, lat_max, lon_max = WORLD_BBOX
         source = "mundo inteiro"
 
+    resolution_deg = _capped_resolution(lat_min, lat_max, lon_min, lon_max, resolution_deg)
     print(f"Gerando grid para: {source}")
     lats = np.arange(lat_min, lat_max, resolution_deg)
     lons = np.arange(lon_min, lon_max, resolution_deg)
@@ -130,10 +164,6 @@ def fetch_env_indices(
     geeProject: str,
     occurrences: list[dict] = None,
 ) -> pd.DataFrame:
-    print("occurrences")
-    
-    print(occurrences)
-
     all_occ_df = pd.DataFrame(occurrences if occurrences is not None else [])
     available_cols = all_occ_df.columns.tolist()
 

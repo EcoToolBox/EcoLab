@@ -2,6 +2,7 @@ import {
   Box, Typography, Alert, Grid, Divider, Accordion,
   AccordionSummary, AccordionDetails, Chip, Button,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, LinearProgress,
+  Tabs, Tab,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -34,6 +35,7 @@ const MODEL_LABELS = {
   random_forest: "Random Forest",
   svm: "SVM",
   brt: "BRT",
+  ensemble: "Ensemble",
 };
 
 const METRIC_LABELS = { auc: "AUC", tss: "TSS", boyce: "Boyce Index" };
@@ -224,7 +226,7 @@ function ModelAccordion({ model, modelData, index }) {
   const foldMetrics     = modelData?.fold_metrics ?? null;
   const validationMode  = modelData?.validation_mode ?? "random";
   const nFolds          = modelData?.n_folds ?? null;
-  const label           = MODEL_LABELS[model] ?? model;
+  const label           = model === "ensemble" ? "Ensemble (média ponderada)" : (MODEL_LABELS[model] ?? model);
   const hasMetrics      = Object.keys(metrics).length > 0;
   const varImportance   = modelData?.variable_importance ?? modelData?.variableImportance ?? {};
 
@@ -251,11 +253,24 @@ function ModelAccordion({ model, modelData, index }) {
         <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
           <Typography fontWeight={600} fontSize="0.95rem">{label}</Typography>
           <Chip
-            label={validationMode === "spatial" ? `Validação espacial (${nFolds} folds)` : "Validação aleatória"}
+            label={
+              validationMode === "spatial" ? `Validação espacial (${nFolds} folds)`
+                : validationMode === "repeated" ? `Validação aleatória (${nFolds}x 80/20)`
+                : "Validação aleatória"
+            }
             size="small"
             variant="outlined"
             sx={{ fontWeight: 600, fontSize: "0.7rem" }}
           />
+          {modelData?.target === "kde" && (
+            <Chip
+              label={modelData?.kde_r2 != null ? `Resposta KDE (R² ${modelData.kde_r2.toFixed(2)})` : "Resposta KDE"}
+              size="small"
+              variant="outlined"
+              color="secondary"
+              sx={{ fontWeight: 600, fontSize: "0.7rem" }}
+            />
+          )}
           {hasMetrics &&
             Object.entries(metrics).map(([key, value]) =>
               value != null ? (
@@ -384,15 +399,64 @@ function ModelAccordion({ model, modelData, index }) {
           </Box>
         )}
 
+        {modelData?.ensemble_info && <EnsembleMembersTable info={modelData.ensemble_info} />}
+
         <VariableImportanceTable variableImportance={varImportance} />
       </AccordionDetails>
     </Accordion>
   );
 }
 
+/** Modelos que entraram no ensemble, com o peso de cada um */
+function EnsembleMembersTable({ info }) {
+  const metric = (info?.weight_metric ?? "tss").toLowerCase();
+  const members = info?.members ?? [];
+  const excluded = info?.excluded ?? [];
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Typography variant="subtitle2" fontWeight={600} sx={{ color: "#444", mb: 1 }}>
+        Composição do ensemble (média ponderada por {metric.toUpperCase()}, mínimo {info?.threshold ?? 0})
+      </Typography>
+      <TableContainer component={Paper} variant="outlined">
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
+              <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Modelo</TableCell>
+              <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>{metric.toUpperCase()}</TableCell>
+              <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem", minWidth: 160 }}>Peso</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {members.map((m) => (
+              <TableRow key={m.model}>
+                <TableCell sx={{ fontSize: "0.8rem" }}>{MODEL_LABELS[m.model] ?? m.model}</TableCell>
+                <TableCell sx={{ fontSize: "0.8rem" }}>{m[metric]?.toFixed(3)}</TableCell>
+                <TableCell>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <LinearProgress variant="determinate" value={(m.weight ?? 0) * 100} sx={{ flex: 1, height: 6, borderRadius: 3 }} />
+                    <Typography sx={{ fontSize: "0.75rem", minWidth: 40 }}>{((m.weight ?? 0) * 100).toFixed(1)}%</Typography>
+                  </Box>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      {excluded.length > 0 && (
+        <Typography variant="body2" sx={{ color: "#888", mt: 1 }}>
+          Fora do ensemble (abaixo do mínimo): {excluded.map((e) => `${MODEL_LABELS[e.model] ?? e.model}${e.value != null ? ` (${Number(e.value).toFixed(3)})` : ""}`).join(", ")}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
 /** Accordion externo: uma espécie */
 function SpeciesAccordion({ species, modelsMap, index }) {
-  const modelEntries = Object.entries(modelsMap ?? {});
+  const allEntries = Object.entries(modelsMap ?? {});
+  const modelEntries = allEntries.filter(([model]) => model !== "ensemble");
+  const ensembleData = modelsMap?.ensemble ?? null;
+  const [tab, setTab] = useState(0);
 
   // Coleta melhor AUC entre os modelos para exibir no header da espécie
   const bestAuc = modelEntries.reduce((best, [, md]) => {
@@ -441,7 +505,19 @@ function SpeciesAccordion({ species, modelsMap, index }) {
       </AccordionSummary>
 
       <AccordionDetails sx={{ p: 2 }}>
-        {modelEntries.length === 0 ? (
+        {ensembleData && (
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            sx={{ mb: 2, borderBottom: "1px solid #e0e0e0" }}
+          >
+            <Tab label="Modelos individuais" sx={{ textTransform: "none", fontWeight: 600 }} />
+            <Tab label="Ensemble (média ponderada)" sx={{ textTransform: "none", fontWeight: 600 }} />
+          </Tabs>
+        )}
+        {ensembleData && tab === 1 ? (
+          <ModelAccordion model="ensemble" modelData={ensembleData} index={0} />
+        ) : modelEntries.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             Nenhum modelo disponível para esta espécie.
           </Typography>
@@ -557,7 +633,10 @@ export default function ModelResults({
       <Box sx={{ display: "flex", flexDirection: "column" }}>
         {warnings.length > 0 && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Alguns modelos não puderam ser executados: {warnings.join(" | ")}
+            Avisos da execução:
+            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+              {warnings.map((w, i) => <li key={i}>{w}</li>)}
+            </Box>
           </Alert>
         )}
         {speciesEntries.map(([species, modelsMap], index) => (

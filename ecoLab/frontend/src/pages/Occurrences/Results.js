@@ -189,7 +189,14 @@ export default function OccurrenceResults({
         </Alert>
       ) : (
         <Box sx={{ height: 500, width: "100%" }}>
-          <DataGrid rows={occurrenceData} columns={columns} />
+          <DataGrid
+            rows={occurrenceData}
+            columns={columns}
+            density="compact"
+            disableColumnMenu
+            initialState={{ pagination: { paginationModel: { pageSize: 100 } } }}
+            pageSizeOptions={[25, 50, 100, 200]}
+          />
         </Box>
       )}
 

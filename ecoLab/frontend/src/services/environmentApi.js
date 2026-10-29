@@ -74,5 +74,43 @@ const environmentApi = {
         })
             .then(handleResponse)
             .then((data) => data.msg ?? data.results ?? data),
+
+    // Abre a janela nativa "Selecionar pasta" (Explorer no Windows) pelo backend local.
+    pickFolder: (initial) =>
+        fetch(`${getBaseURL()}/system/pick-folder`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initial: initial || null }),
+        })
+            .then(handleResponse)
+            .then((data) => data.msg ?? data),
+
+    // Rasters (.tif) lidos direto de uma pasta do computador pelo backend local.
+    scanRasters: (folder) =>
+        fetch(`${getBaseURL()}/rasters/scan`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folder }),
+        })
+            .then(handleResponse)
+            .then((data) => data.msg ?? data),
+
+    sampleRasters: (folder, files, occurrences) =>
+        fetch(`${getBaseURL()}/rasters/sample`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folder, files, occurrences }),
+        })
+            .then(handleResponse)
+            .then((data) => data.msg ?? data),
+
+    buildRasterGrid: (folder, files, resolution) =>
+        fetch(`${getBaseURL()}/rasters/grid`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folder, files, resolution }),
+        })
+            .then(handleResponse)
+            .then((data) => data.msg ?? data),
 };
 export default environmentApi;

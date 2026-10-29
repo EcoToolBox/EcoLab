@@ -69,6 +69,8 @@ export default function App() {
     mapping: { latitude: "", longitude: "" },
     variables: [],
   });
+  // Variáveis a partir de rasters (.tif) numa pasta do computador (modo "rasters").
+  const [rasterEnv, setRasterEnv] = useState({ folder: "", available: [], files: [], resolution: 0.1 });
 
   // ── Models config ──
   const [modelsData, setModelsData] = useState({
@@ -162,6 +164,8 @@ export default function App() {
                 setEnvironmentMode={setEnvironmentMode}
                 envUpload={envUpload}
                 setEnvUpload={setEnvUpload}
+                rasterEnv={rasterEnv}
+                setRasterEnv={setRasterEnv}
                 configOnly
               />
             }
@@ -184,6 +188,9 @@ export default function App() {
                 modelsData={modelsData}
                 setModelsData={setModelsData}
                 envGridData={envGridData}
+                environmentMode={environmentMode}
+                envUpload={envUpload}
+                rasterEnv={rasterEnv}
               />
             }
           />
@@ -220,6 +227,8 @@ export default function App() {
                 environmentMode={environmentMode}
                 envUpload={envUpload}
                 setEnvGridData={setEnvGridData}
+                rasterEnv={rasterEnv}
+                setModelsData={setModelsData}
               />
             }
           />

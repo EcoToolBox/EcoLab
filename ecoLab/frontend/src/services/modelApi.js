@@ -45,5 +45,17 @@ const modelApi = {
         })
         .then(handleResponse)
         .then((data) => data.msg ?? data.results ?? data),
+
+    // Grid regular cobrindo a área, usado só para desenhar o mapa.
+    uploadPredictionGrid: (file) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        return fetch(`${getBaseURL()}/prediction-grid/upload`, {
+            method: "POST",
+            body: formData,
+        })
+            .then(handleResponse)
+            .then((data) => data.msg ?? data);
+    },
 };
 export default modelApi;

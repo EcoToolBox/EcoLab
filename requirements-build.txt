@@ -89,6 +89,7 @@ pyogrio==0.12.1
 pyparsing==3.3.2
 pyproj==3.7.2
 pyrate-limiter==2.10.0
+pystray==0.19.5
 pytest==9.0.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2

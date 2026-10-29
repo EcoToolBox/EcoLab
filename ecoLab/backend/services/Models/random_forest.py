@@ -2,6 +2,10 @@ from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
 from .validation import run_validation
 
+# Núcleos usados pelas árvores. Quando os modelos rodam em paralelo
+# (get_models), cada tarefa usa 1 núcleo para não disputar a CPU.
+N_JOBS = -1
+
 
 def _prepare(df: pd.DataFrame, feature_cols: list[str]):
     missing = [c for c in feature_cols if c not in df.columns]
@@ -57,7 +61,7 @@ def run(
             max_features="sqrt",
             class_weight="balanced",
             random_state=42,
-            n_jobs=-1,
+            n_jobs=N_JOBS,
         )
 
     cv_result = run_validation(
@@ -87,6 +91,7 @@ def run(
         "metrics": cv_result["metrics"],
         "metrics_std": cv_result["metrics_std"],
         "fold_metrics": cv_result["fold_metrics"],
+        "oof": cv_result.get("oof"),
         "validation_mode": cv_result["validation_mode"],
         "n_folds": cv_result["n_folds"],
     }

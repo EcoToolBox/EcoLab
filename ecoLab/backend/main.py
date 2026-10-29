@@ -1,14 +1,23 @@
 import os
 import json
+import math
+import traceback
+from pathlib import Path
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
 from .constants import REQUIRED_OCCURRENCE_FIELDS, REQUIRED_ENVIRONMENT_FIELDS, ColumnMapping, EnvColumnMapping
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ValidationError
-from .services import get_observations, get_environment, get_interactions, get_models, get_uploads
+from .services import get_observations, get_environment, get_interactions, get_models, get_uploads, prediction_grid, raster_env, system_dialogs
 from .services.Models import create_grid
+
+# Carrega backend/.env (credenciais padrão como ECOLAB_GBIF_*, nunca commitadas
+# — já está em .gitignore) antes de qualquer código que leia os.environ.
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 app = FastAPI()
 
 # Grades ambientais costumam ter muitas linhas; 20 MB rejeitava arquivos CSV
@@ -167,13 +176,26 @@ def search_interactions_occurrences(interactions: dict):
 @app.post("/api/models")
 def run_models(models: dict):
     try:
-        print("170")
         result = get_models.run_models(models)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
-    except Exception:
-        raise HTTPException(500, "Não foi possível executar os modelos. Verifique os dados e tente novamente.")
-    return {"msg": result}
+    except Exception as exc:
+        traceback.print_exc()  # erro completo no terminal do backend
+        raise HTTPException(500, f"Não foi possível executar os modelos: {type(exc).__name__}: {exc}")
+    return {"msg": _json_safe(result)}
+
+
+def _json_safe(obj):
+    """NaN/inf não são JSON válido (viram erro 500 na resposta): troca por None."""
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, np.generic):
+        obj = obj.item()
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return None
+    return obj
 
 
 # occurrence upload (user's own spreadsheet, mapped to the required fields on the frontend)
@@ -200,7 +222,11 @@ async def upload_occurrences(file: UploadFile = File(...), mapping: str = Form(.
     if len(content) > UPLOAD_MAX_BYTES:
         raise HTTPException(413, "Arquivo muito grande.")
 
-    result = get_uploads.parse_occurrence_upload(content, file.filename, mapping_dict)
+    # parse_occurrence_upload é CPU-bound (pandas) e demora segundos em planilhas
+    # grandes; chamado direto aqui ele bloqueava o event loop do FastAPI inteiro
+    # (nenhuma outra requisição era atendida nesse meio tempo, o que parecia um
+    # travamento/crash do backend). run_in_threadpool joga isso numa thread.
+    result = await run_in_threadpool(get_uploads.parse_occurrence_upload, content, file.filename, mapping_dict)
     return {"msg": result}
 
 
@@ -235,5 +261,80 @@ async def upload_environment(
     if len(content) > UPLOAD_MAX_BYTES:
         raise HTTPException(413, "Arquivo muito grande.")
 
-    result = get_uploads.parse_environment_upload(content, file.filename, mapping_dict, variables_list)
+    result = await run_in_threadpool(
+        get_uploads.parse_environment_upload, content, file.filename, mapping_dict, variables_list
+    )
     return {"msg": result}
+
+
+# prediction grid upload (regular grid covering the area, used only to draw the maps)
+@app.post("/api/prediction-grid/upload")
+async def upload_prediction_grid(file: UploadFile = File(...)):
+    content = await file.read(UPLOAD_MAX_BYTES + 1)
+    if len(content) > UPLOAD_MAX_BYTES:
+        raise HTTPException(413, "Arquivo muito grande.")
+    result = await run_in_threadpool(prediction_grid.save_prediction_grid, content, file.filename)
+    if not result.get("success"):
+        raise HTTPException(422, " ".join(result.get("errors", [])) or "Grid de predição inválido.")
+    return {"msg": result}
+
+
+# rasters (.tif) read straight from a folder on the user's machine (EcoLab runs locally)
+class RasterFolder(BaseModel):
+    folder: str
+    files: list[str] | None = None
+
+
+class RasterSample(RasterFolder):
+    occurrences: list[dict]
+
+
+class RasterGrid(RasterFolder):
+    resolution: float = 0.1
+
+
+@app.post("/api/rasters/scan")
+def scan_rasters(payload: RasterFolder):
+    try:
+        result = raster_env.scan_folder(payload.folder)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {"msg": result}
+
+
+@app.post("/api/rasters/sample")
+async def sample_rasters(payload: RasterSample):
+    occurrences = pd.DataFrame(payload.occurrences)
+    if occurrences.empty or not {"latitude", "longitude"}.issubset(occurrences.columns):
+        raise HTTPException(422, "Envie ocorrências com latitude e longitude.")
+    try:
+        result = await run_in_threadpool(raster_env.sample_points, payload.folder, payload.files, occurrences)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    result = result.replace([np.nan, np.inf, -np.inf], None)
+    return {"msg": result.to_dict(orient="records")}
+
+
+@app.post("/api/rasters/grid")
+async def raster_grid(payload: RasterGrid):
+    """Monta o grid de predição a partir dos rasters e guarda no servidor (devolve gridId)."""
+    try:
+        grid = await run_in_threadpool(raster_env.build_grid, payload.folder, payload.files, payload.resolution)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    result = await run_in_threadpool(prediction_grid.save_prediction_grid_df, grid)
+    return {"msg": result}
+
+
+class FolderPick(BaseModel):
+    initial: str | None = None
+
+
+@app.post("/api/system/pick-folder")
+async def pick_folder(payload: FolderPick):
+    """Abre a janela nativa de seleção de pasta (Explorer no Windows) e devolve o caminho."""
+    try:
+        folder = await run_in_threadpool(system_dialogs.pick_folder, payload.initial)
+    except RuntimeError as exc:
+        raise HTTPException(500, str(exc))
+    return {"msg": {"folder": folder}}
