@@ -49,7 +49,7 @@ def _match_interactor(names: pd.Series, interactor: str) -> pd.Series:
     if not target:
         return pd.Series(False, index=names.index)
     norm = names.map(_normalize_name)
-    return (norm == target) | norm.str.startswith(target + " ")
+    return (norm == target) | norm.str.startswith(target + " ", na=False)
 
 def _ensure_default_gbif_credentials():
     """
@@ -205,8 +205,16 @@ def add_interaction_occurrence(interactions: dict, use_year: bool = True):
     rec_lon = pd.to_numeric(occurrences_df.get("longitude", pd.Series(dtype=object)).astype(str)
                             .str.replace(",", ".", regex=False), errors="coerce")
     rec_valid = (rec_lat.between(-90, 90) & rec_lon.between(-180, 180)).to_numpy()
-    rec_species = (occurrences_df[species_col].astype(str).str.casefold()
-                   if species_col else pd.Series("", index=occurrences_df.index))
+    # Nome da espécie de cada linha. Com bases + planilha juntas, umas linhas
+    # têm "species" e outras só "scientificName"; vazios (NaN) viram "" (no
+    # pandas 3, astype(str) mantém o NaN e o "in" quebrava).
+    rec_species = pd.Series("", index=occurrences_df.index, dtype=object)
+    for c in ("species", "scientificName", "taxon", "name"):
+        if c in occurrences_df.columns:
+            names = occurrences_df[c].astype(object).where(occurrences_df[c].notna(), "")
+            names = names.map(lambda v: str(v).strip())
+            rec_species = rec_species.where(rec_species != "", names)
+    rec_species = rec_species.map(lambda v: str(v).casefold())
     name_cols = [c for c in ("scientificName", "species", "acceptedScientificName") if c in all_occ_df.columns]
     candidates = []
     skipped_no_data = 0
@@ -236,7 +244,7 @@ def add_interaction_occurrence(interactions: dict, use_year: bool = True):
         # vale para todas as espécies) a espécie da linha é um dos alvos.
         use = rec_valid.copy()
         if not covers_all and species_col:
-            targets = [t.lower() for t in relevant_targets]
+            targets = [str(t).lower() for t in relevant_targets if t]
             use &= rec_species.map(lambda sp: any(t in sp for t in targets)).to_numpy()
 
         if not use.any():

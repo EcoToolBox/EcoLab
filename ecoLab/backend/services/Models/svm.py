@@ -5,6 +5,7 @@ from sklearn.metrics import roc_auc_score
 import pandas as pd
 import numpy as np
 from .validation import run_validation
+from .validation import explain_dropped
 
 
 def _prepare(df: pd.DataFrame, feature_cols: list[str]):
@@ -21,6 +22,9 @@ def _prepare(df: pd.DataFrame, feature_cols: list[str]):
     coords = df[["latitude", "longitude"]].copy()
 
     mask = X.notna().all(axis=1)
+    why = explain_dropped(X, y, mask)
+    if why:
+        print(" ", why.strip())
     X, y, coords = X[mask], y[mask], coords[mask]
 
     class_counts = y.value_counts()
@@ -29,14 +33,14 @@ def _prepare(df: pd.DataFrame, feature_cols: list[str]):
     if len(class_counts) < 2:
         raise ValueError(
             f"Dados contêm apenas a classe {class_counts.index[0]}. "
-            "São necessárias presença (1) e ausência (0) para treinar o modelo."
+            "São necessárias presença (1) e ausência (0) para treinar o modelo." + why
         )
 
     min_class_count = class_counts.min()
     if min_class_count < 5:
         raise ValueError(
             f"Classe minoritária tem apenas {min_class_count} amostras. "
-            "São necessárias pelo menos 5 amostras por classe."
+            "São necessárias pelo menos 5 amostras por classe." + why
         )
 
     return X, y, coords

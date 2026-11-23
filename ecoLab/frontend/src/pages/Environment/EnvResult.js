@@ -176,11 +176,12 @@ export default function EnvResult({
         setOccurrenceData(enrichedOccurrences);
 
         // O mesmo grid serve de fonte de background e de grid do mapa. Se o
-        // usuário já enviou um grid de predição próprio na tela de Modelos,
-        // ele é mantido.
+        // usuário já enviou um grid de predição próprio (CSV) na tela de
+        // Modelos, ele é mantido; um grid gerado antes a partir de rasters é
+        // sempre refeito (os rasters, a seleção ou a resolução podem ter mudado).
         const grid = await environmentApi.buildRasterGrid(folder, files, rasterEnv.resolution ?? 0.1);
         setModelsData?.((prev) =>
-          prev?.predictionGridId
+          prev?.predictionGridId && !prev?.predictionGrid?.fromRasters
             ? prev
             : {
                 ...prev,
@@ -188,6 +189,7 @@ export default function EnvResult({
                 predictionGrid: {
                   gridId: grid.gridId,
                   fileName: `rasters (${files.length}) a ${rasterEnv.resolution ?? 0.1}°`,
+                  fromRasters: true,
                   rows: grid.rows,
                   variables: grid.variables ?? [],
                 },

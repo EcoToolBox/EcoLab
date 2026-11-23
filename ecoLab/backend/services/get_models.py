@@ -1,10 +1,12 @@
 from .Models import gam, maxent, random_forest, svm, brt, create_absence, create_grid, create_model_maps, kde_target
-from .Models.validation import set_tss_mode
+from .Models import validation
+from .Models.validation import set_tss_mode, set_test_size
 from .Models.ensemble import build_weighted_ensemble
 from .prediction_grid import load_prediction_grid
 import os
 import sys
 import time
+import numpy as np
 import pandas as pd
 
 MODEL_RUNNERS = {
@@ -22,6 +24,7 @@ def _run_model_task(task: dict):
     """Roda um modelo de uma espécie. Fica no nível do módulo para poder ir para outro processo."""
     random_forest.N_JOBS = task["inner_jobs"]
     set_tss_mode(task["tss_mode"])
+    set_test_size(task.get("test_size", 0.2))
     started = time.perf_counter()
     try:
         kwargs = dict(validation_mode=task["validation_mode"], n_folds=task["n_folds"])
@@ -85,6 +88,8 @@ def _make_tasks(species, data, features, selected_models, selected_metrics, vali
             "species": species, "model": m, "data": data, "features": features,
             "metrics": selected_metrics, "validation_mode": validation_mode,
             "n_folds": n_folds, "tss_mode": tss_mode, "target": target,
+            # lido aqui (no processo principal) porque os workers do loky não herdam o global
+            "test_size": validation.TEST_SIZE,
         }
         for m in selected_models if m in MODEL_RUNNERS
     ]
@@ -126,9 +131,34 @@ def _interaction_feature_cols(columns, interactionData: list[dict]) -> list[str]
         interaction_species.add(i.get("source"))
         interaction_species.add(i.get("target"))
     interaction_species.discard(None)
+    interaction_species.discard("")
     if not interaction_species:
         return []
-    return [c for c in columns if any(sp in c for sp in interaction_species)]
+    return [c for c in columns if _interactor_of(c) in interaction_species]
+
+
+def _interactor_of(column) -> str | None:
+    """
+    Nome da espécie interatora de uma coluna de interação, no formato
+    "Myrsine lancifolia (eats)". Antes a comparação era "nome contido na
+    coluna": um nó do GloBI com nome vazio ou de uma letra casava com todas
+    as colunas e as variáveis ambientais sumiam do modelo.
+    """
+    text = str(column)
+    if not text.endswith(")") or " (" not in text:
+        return None
+    return text.rsplit(" (", 1)[0].strip() or None
+
+
+def _is_numeric_feature(df: pd.DataFrame, column) -> bool:
+    """Só colunas numéricas viram variáveis (texto da planilha, como gênero ou autor, não)."""
+    series = df[column]
+    if pd.api.types.is_bool_dtype(series):
+        return False
+    if pd.api.types.is_numeric_dtype(series):
+        return True
+    converted = pd.to_numeric(series, errors="coerce")
+    return converted.notna().sum() > 0 and converted.notna().sum() >= series.notna().sum() * 0.95
 
 
 def _buffer_for(occ: pd.DataFrame, default_km: float) -> float:
@@ -158,15 +188,103 @@ def _coverage_warnings(grid: pd.DataFrame, occurrences: pd.DataFrame, limit: flo
 
 
 def _dedupe_presences(occ: pd.DataFrame, label: str = "") -> pd.DataFrame:
-    """Uma presença por coordenada: registros repetidos no mesmo ponto não trazem informação nova e inflam as métricas."""
+    """
+    Uma presença por coordenada, ou por célula do grid quando as variáveis
+    vêm do grid (coluna _cell): registros na mesma célula têm exatamente as
+    mesmas variáveis, então repeti-los só infla as métricas.
+    """
     if occ is None or occ.empty or not {"latitude", "longitude"}.issubset(occ.columns):
         return occ
-    lat = pd.to_numeric(occ["latitude"].astype(str).str.replace(",", ".", regex=False), errors="coerce").round(5)
-    lon = pd.to_numeric(occ["longitude"].astype(str).str.replace(",", ".", regex=False), errors="coerce").round(5)
-    keep = ~pd.DataFrame({"a": lat, "b": lon}).duplicated()
+    if CELL_COL in occ.columns and occ[CELL_COL].notna().any():
+        keys = pd.DataFrame({"c": occ[CELL_COL].to_numpy()})
+        what = "na mesma célula do grid"
+    else:
+        lat = pd.to_numeric(occ["latitude"].astype(str).str.replace(",", ".", regex=False), errors="coerce").round(5)
+        lon = pd.to_numeric(occ["longitude"].astype(str).str.replace(",", ".", regex=False), errors="coerce").round(5)
+        keys = pd.DataFrame({"a": lat.to_numpy(), "b": lon.to_numpy()})
+        what = "na mesma coordenada"
+    keep = ~keys.duplicated()
     if (~keep).any():
-        print(f"  {label}: {int((~keep).sum())} registros repetidos na mesma coordenada removidos ({int(keep.sum())} pontos únicos).")
+        print(f"  {label}: {int((~keep).sum())} registros repetidos {what} removidos ({int(keep.sum())} pontos únicos).")
     return occ[keep.to_numpy()]
+
+
+CELL_COL = "_cell"
+EE_ENV_COLUMNS = ("NDVI", "NDWI", "tavg", "prec")
+
+
+def _presences_from_grid(occ: pd.DataFrame, grid: pd.DataFrame, max_cells_away: float = 1.5):
+    """
+    Dá a cada presença as variáveis do Earth Engine da célula do grid mais
+    próxima (com valores), como numa extração de raster: treino, background e
+    mapa passam a usar a mesma tabela.
+
+    Presenças a mais de `max_cells_away` células de qualquer célula do grid
+    estão fora da área de estudo (ex.: pontos fora do país): saem da análise,
+    porque o background e o mapa não cobrem esse lugar.
+    """
+    from scipy.spatial import cKDTree
+
+    warnings: list[str] = []
+    env_cols = [c for c in EE_ENV_COLUMNS if c in grid.columns]
+    if occ is None or occ.empty or not env_cols:
+        return occ, warnings
+
+    cells = grid.copy()
+    cells["latitude"] = pd.to_numeric(cells["latitude"], errors="coerce")
+    cells["longitude"] = pd.to_numeric(cells["longitude"], errors="coerce")
+    for c in env_cols:
+        cells[c] = pd.to_numeric(cells[c], errors="coerce")
+    cells = cells.dropna(subset=["latitude", "longitude", *env_cols])
+    if cells.empty:
+        return occ, warnings
+
+    occ = occ.copy()
+    lat = pd.to_numeric(occ["latitude"].astype(str).str.replace(",", ".", regex=False), errors="coerce")
+    lon = pd.to_numeric(occ["longitude"].astype(str).str.replace(",", ".", regex=False), errors="coerce")
+    valid = (lat.notna() & lon.notna()).to_numpy()
+
+    coords = cells[["latitude", "longitude"]].to_numpy(dtype=float)
+    tree = cKDTree(coords)
+    # Passo do grid: distância típica entre vizinhos
+    step = float(np.median(tree.query(coords[: min(len(coords), 2000)], k=2)[0][:, 1])) if len(coords) > 1 else 1.0
+
+    dist, idx = tree.query(np.column_stack([lat.to_numpy()[valid], lon.to_numpy()[valid]]), k=1)
+    far = dist > max_cells_away * step
+
+    before = {c: pd.to_numeric(occ[c], errors="coerce").to_numpy()[valid] for c in env_cols if c in occ.columns}
+    for c in env_cols:
+        vals = np.full(len(occ), np.nan)
+        vals[valid] = cells[c].to_numpy()[idx]
+        occ[c] = vals
+    cell_ids = np.full(len(occ), np.nan)
+    cell_ids[valid] = cells.index.to_numpy()[idx]
+    occ[CELL_COL] = cell_ids
+
+    for c, old in before.items():
+        new = occ[c].to_numpy()[valid]
+        ok = np.isfinite(old) & np.isfinite(new)
+        if ok.any():
+            print(f"  {c} das presenças: mediana na etapa Ambiente {np.median(old[ok]):.3f} "
+                  f"-> no grid {np.median(new[ok]):.3f}")
+
+    drop = np.zeros(len(occ), dtype=bool)
+    drop[np.flatnonzero(valid)[far]] = True
+    if drop.any():
+        names = pd.Series("", index=occ.index, dtype=object)
+        for c in (c for c in SPECIES_COL_CANDIDATES if c in occ.columns):
+            col = occ[c].astype(object).where(occ[c].notna(), "").map(lambda v: str(v).strip())
+            names = names.where(names != "", col)
+        per_species = names[drop].replace("", "sem nome").value_counts()
+        detail = ", ".join(f"{n} ({k})" for n, k in per_species.items())
+        msg = (f"{int(drop.sum())} ocorrência(s) fora da área do mapa foram descartadas, "
+               f"porque o background e o mapa não cobrem esse lugar: {detail}.")
+        print("Aviso:", msg)
+        warnings.append(msg)
+        occ = occ[~drop]
+    print(f"Variáveis ambientais das presenças tiradas do grid ({', '.join(env_cols)}), "
+          f"passo do grid {step:.3f}°.")
+    return occ, warnings
 
 
 def _apply_kde_target(data: pd.DataFrame, kde_cfg: dict | None, label: str = "") -> pd.DataFrame:
@@ -204,6 +322,20 @@ def _split_provided_background(df: pd.DataFrame):
 SPECIES_COL_CANDIDATES = ["species", "scientificName", "taxon", "name"]
 
 
+def _row_species_names(df: pd.DataFrame, columns: list[str]) -> pd.Series:
+    """
+    Nome da espécie de cada linha, normalizado. Com bases + planilha ("Usar os
+    dois"), as linhas das bases têm o nome em "scientificName" e as da planilha
+    em "species": olhar uma coluna só descartava a outra fonte inteira.
+    """
+    names = pd.Series("", index=df.index, dtype=object)
+    for c in columns:
+        col = df[c].astype(object).where(df[c].notna(), "")
+        col = col.map(lambda v: " ".join(str(v).lower().split()))
+        names = names.where(names != "", col)
+    return names
+
+
 def _filter_by_species(df: pd.DataFrame, species_name: str | None, strict: bool = False) -> pd.DataFrame:
     """
     Mantém só as linhas da espécie selecionada. Permite subir uma planilha
@@ -215,8 +347,8 @@ def _filter_by_species(df: pd.DataFrame, species_name: str | None, strict: bool 
     """
     if df is None or df.empty or not species_name:
         return df
-    species_col = next((c for c in SPECIES_COL_CANDIDATES if c in df.columns), None)
-    if species_col is None:
+    species_cols = [c for c in SPECIES_COL_CANDIDATES if c in df.columns]
+    if not species_cols:
         if strict:
             raise ValueError(
                 "Os dados de ocorrência chegaram sem a coluna de espécie, então não dá para separar "
@@ -224,7 +356,7 @@ def _filter_by_species(df: pd.DataFrame, species_name: str | None, strict: bool 
             )
         return df
     target = " ".join(species_name.lower().split())
-    names = df[species_col].astype(str).str.lower().str.split().str.join(" ")
+    names = _row_species_names(df, species_cols)
     # Nome exato OU nome seguido de autor/subespécie ("Melipona seminigra Friese, 1903",
     # "Melipona seminigra abunensis"). Antes o segundo caso só valia quando não havia
     # nenhuma linha com o nome exato, e a maioria dos registros era descartada.
@@ -313,6 +445,10 @@ def run_models(models: dict):
     background_buffer_km = float(modelsData.get("backgroundBufferKm", 0) or 0)
     tss_mode = modelsData.get("tssMode", "max")
     set_tss_mode(tss_mode)
+    # Proporção de teste (%) nas validações aleatória e repetida; padrão 20%.
+    test_size = set_test_size(modelsData.get("testSize", 20))
+    if validation_mode in ("random", "repeated"):
+        print(f"Proporção treino/teste: {round((1 - test_size) * 100)}% / {round(test_size * 100)}%")
     kde_cfg = modelsData.get("kdeTarget") or {}
     target = "kde" if kde_cfg.get("enabled") else "binary"
 
@@ -379,6 +515,15 @@ def run_models(models: dict):
         finalData = finalData.drop(columns=orphan_interaction_cols)
         print(f"{len(orphan_interaction_cols)} colunas de interação sem correspondente no grid foram descartadas.")
 
+    # Variáveis do Earth Engine (NDVI, NDWI, tavg, prec): as presenças passam a
+    # usar o valor da MESMA célula do grid que o background e o mapa usam.
+    # Antes vinham da etapa Ambiente (outra consulta, feita em outro momento) e,
+    # se diferissem das do grid, o modelo separava presença de background por
+    # essa diferença: AUC alto e mapa baixo justamente onde estão os pontos.
+    if user_grid_df is None or user_grid_df.empty:
+        finalData, area_warnings = _presences_from_grid(finalData, backgroundData)
+        env_warnings.extend(area_warnings)
+
     # Quando o grid vem de uma planilha do usuário, as ocorrências (finalData)
     # não têm variáveis ambientais próprias. Herdamos os valores do ponto do
     # grid mais próximo de cada ocorrência, pra presença e ausência usarem as
@@ -393,7 +538,8 @@ def run_models(models: dict):
             finalData = create_grid.attach_nearest_grid_features(finalData, backgroundData, missing_in_final)
 
     not_features = {"eventDate", "latitude", "longitude", "geometry", "presence", "year",
-                    "id", "country", "day", "month", "scientificName", "species", "taxon", "name", "source", "bufferKm", "presence_kde"}
+                    "id", "country", "day", "month", "scientificName", "species", "taxon", "name", "source", "bufferKm", "presence_kde",
+                    CELL_COL}
                                     
     # Com uma única espécie selecionada, a planilha pode conter várias
     # espécies: filtramos antes de montar presença/background.
@@ -401,7 +547,8 @@ def run_models(models: dict):
         finalData = _filter_by_species(finalData, selected_species_names[0])
 
     if presence_type == "presence_only":
-        features = [col for col in finalData.columns if col not in not_features]
+        features = [col for col in finalData.columns
+                    if col not in not_features and _is_numeric_feature(finalData, col)]
         if not features:
             raise ValueError("Nenhuma variável ambiental foi encontrada para treinar o modelo.")
 
@@ -446,7 +593,8 @@ def run_models(models: dict):
         )
         for col in _interaction_feature_cols(data_with_absences.columns, interactionData):
             data_with_absences[col] = data_with_absences[col].fillna(0)
-        features = [col for col in data_with_absences.columns if col not in not_features]
+        features = [col for col in data_with_absences.columns
+                    if col not in not_features and _is_numeric_feature(data_with_absences, col)]
         features = _drop_empty_features(data_with_absences, features)
         if not features:
             raise ValueError("Nenhuma variável ambiental foi encontrada para treinar o modelo.")
@@ -488,16 +636,26 @@ def run_models(models: dict):
     for i in interactionData:
         interaction_columns.add(i.get("source"))
         interaction_columns.add(i.get("target"))
+    interaction_columns.discard(None)
+    interaction_columns.discard("")
 
     interaction_col_candidates = []
     env_only_cols = []
+    ignored_cols = []
     for c in finalData.columns:
         if c in not_features:
             continue
-        if any(ic in c for ic in interaction_columns):
+        if _interactor_of(c) in interaction_columns:
             interaction_col_candidates.append(c)
-        else:
+        elif _is_numeric_feature(finalData, c):
             env_only_cols.append(c)
+        else:
+            ignored_cols.append(c)
+    if ignored_cols:
+        env_warnings.append(
+            "Colunas de texto ignoradas como variáveis: " + ", ".join(map(str, ignored_cols[:12]))
+            + ("…" if len(ignored_cols) > 12 else "") + "."
+        )
 
     def _prepare_species(species_name):
         """Fase 1 de uma espécie: filtra as ocorrências e monta presenças + pseudo-ausências."""
@@ -515,7 +673,11 @@ def run_models(models: dict):
         species_interaction_cols = list(dict.fromkeys(species_interaction_cols))
         features_for_species = list(dict.fromkeys(env_only_cols + species_interaction_cols))
         if not features_for_species:
-            raise ValueError(f"Nenhuma variável ambiental ou de interação foi encontrada para {species_name}.")
+            raise ValueError(
+                f"Nenhuma variável ambiental ou de interação foi encontrada para {species_name}. "
+                f"Colunas recebidas: {', '.join(map(str, list(finalData.columns)[:20]))}. "
+                "Confira se a etapa Ambiente foi concluída depois da última busca de ocorrências."
+            )
 
         # Cópia só quando a espécie tem colunas de interação para preencher
         # (o grid pode ter centenas de milhares de linhas).

@@ -22,10 +22,11 @@ from scipy.ndimage import gaussian_filter
 from scipy.interpolate import griddata
 from shapely import contains, points
 
-@lru_cache(maxsize=None)
 def _load_world_shapefile():
-    URL = "https://naturalearth.s3.amazonaws.com/110m_cultural/ne_110m_admin_0_countries.zip"
-    return gpd.read_file(URL)
+    # Contornos embutidos no app (antes eram baixados da internet a cada mapa).
+    from .. import world as _world
+
+    return _world.load_world()
 
 MODEL_LABELS = {
     "maxent": "MaxEnt",
@@ -138,6 +139,82 @@ class _Canvas:
 
 _CANVAS_CACHE: dict = {}
 
+# Classes de adequabilidade (mesmas faixas usadas por Zhao et al. 2025 e
+# He et al. 2021): inadequada, baixa, moderada e alta.
+SUITABILITY_BREAKS = [0.0, 0.2, 0.4, 0.6, 1.0000001]
+SUITABILITY_KEYS = ["unsuitable", "low", "moderate", "high"]
+GEOTIFF_NODATA = -9999.0
+
+
+def _write_geotiff(path, arr_north_up, west, north, px, py):
+    """GeoTIFF float32 em EPSG:4326, sem GDAL (tifffile + tags GeoTIFF)."""
+    import tifffile
+
+    data = np.where(np.isfinite(arr_north_up), arr_north_up, GEOTIFF_NODATA).astype("float32")
+    geokeys = (1, 1, 0, 3,          # versão 1.1.0, 3 chaves
+               1024, 0, 1, 2,       # GTModelType = geográfico
+               1025, 0, 1, 1,       # GTRasterType = PixelIsArea
+               2048, 0, 1, 4326)    # GeographicType = WGS 84
+    tifffile.imwrite(
+        path, data, photometric="minisblack", compression="zlib",
+        extratags=[
+            (33550, "d", 3, (float(px), float(py), 0.0), True),                    # ModelPixelScale
+            (33922, "d", 6, (0.0, 0.0, 0.0, float(west), float(north), 0.0), True),  # ModelTiepoint
+            (34735, "H", len(geokeys), geokeys, True),                              # GeoKeyDirectory
+            (42113, "s", 0, f"{GEOTIFF_NODATA:g}", True),                            # GDAL_NODATA
+        ],
+    )
+
+
+def _extra_outputs(canvas, plot_grid, probs, valid, grid_df, bounds, base):
+    """
+    Saídas para a tela de resultados e para download, a partir das MESMAS
+    previsões do mapa:
+      - overlay PNG transparente (mapa interativo), com os limites;
+      - GeoTIFF com a previsão de cada célula do grid (grid regular) ou da
+        malha do mapa (grid irregular, interpolado);
+      - CSV das células (latitude, longitude, probabilidade);
+      - % das células em cada classe de adequabilidade.
+    """
+    lon_min, lat_min, lon_max, lat_max = bounds
+    out = {}
+
+    rgba = HEAT_CMAP(HEAT_NORM(np.nan_to_num(plot_grid, nan=0.0)))
+    rgba[..., 3] = np.where(np.isnan(plot_grid), 0.0, 0.85)
+    overlay = f"{base}_overlay.png"
+    plt.imsave(overlay, np.flipud(rgba))
+    out["overlay_path"] = overlay
+    out["bounds"] = [[float(lat_min), float(lon_min)], [float(lat_max), float(lon_max)]]
+
+    tif = f"{base}.tif"
+    if canvas.regular:
+        arr = np.full((canvas.ny, canvas.nx), np.nan)
+        arr[canvas.iy[valid], canvas.ix[valid]] = probs
+        north = canvas.y0 + (canvas.ny - 1) * canvas.dy + canvas.dy / 2
+        _write_geotiff(tif, arr[::-1], canvas.x0 - canvas.dx / 2, north, canvas.dx, canvas.dy)
+        out["tif_source"] = "cells"
+    else:
+        n_lat, n_lon = plot_grid.shape
+        px = (lon_max - lon_min) / max(1, n_lon - 1)
+        py = (lat_max - lat_min) / max(1, n_lat - 1)
+        _write_geotiff(tif, plot_grid[::-1], lon_min - px / 2, lat_max + py / 2, px, py)
+        out["tif_source"] = "interpolated"
+    out["tif_path"] = tif
+
+    csv = f"{base}_cells.csv"
+    pd.DataFrame({
+        "latitude": grid_df["latitude"].to_numpy(dtype=float)[valid],
+        "longitude": grid_df["longitude"].to_numpy(dtype=float)[valid],
+        "probability": np.round(probs, 5),
+    }).to_csv(csv, index=False)
+    out["cells_csv_path"] = csv
+
+    counts, _ = np.histogram(np.clip(probs, 0, 1), bins=SUITABILITY_BREAKS)
+    total = max(1, int(counts.sum()))
+    out["suitability_classes"] = {k: round(100.0 * c / total, 1) for k, c in zip(SUITABILITY_KEYS, counts)}
+    out["n_cells"] = int(total)
+    return out
+
 
 def _get_canvas(grid_df, country, country_geometry, bounds, heatmap_resolution) -> _Canvas:
     import hashlib
@@ -179,8 +256,9 @@ def generate_model_maps(
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    world = _load_world_shapefile()
-    country_shape = world[world["NAME"].str.lower() == country.lower()]
+    from .. import world as _world
+
+    country_shape = _world.country_shape(country)
 
     if country_shape.empty:
         raise ValueError(f"País '{country}' não encontrado no shapefile.")
@@ -189,6 +267,7 @@ def generate_model_maps(
     country_geometry = country_shape.union_all()
     presence_flag = pd.to_numeric(presence_points_df.get("presence", pd.Series(dtype=float)), errors="coerce")
     presences = presence_points_df[presence_flag == 1]
+    n_presence, n_background = int((presence_flag == 1).sum()), int((presence_flag == 0).sum())
     print(f"Presenças encontradas para plot: {len(presences)}")
 
     canvas = _get_canvas(prediction_grid_df, country, country_geometry,
@@ -267,8 +346,20 @@ def generate_model_maps(
             plt.savefig(path, dpi=150, bbox_inches="tight")
             plt.close(fig)
 
+            try:
+                extras = _extra_outputs(
+                    canvas, plot_grid, probs, mask.to_numpy(), prediction_grid_df,
+                    (lon_min, lat_min, lon_max, lat_max), os.path.splitext(path)[0],
+                )
+            except Exception as exc:  # o mapa estático continua valendo
+                print(f"Aviso: não foi possível gerar camada/GeoTIFF de {model_name}: {exc}")
+                extras = {}
+
             image_paths[model_name] = {
                 "path": path,
+                **extras,
+                "n_presence": n_presence,
+                "n_background": n_background,
                 "metrics": model_result.get("metrics", {}),
                 "metrics_std": model_result.get("metrics_std"),
                 "fold_metrics": model_result.get("fold_metrics"),

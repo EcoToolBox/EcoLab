@@ -23,16 +23,12 @@ import re
 import numpy as np
 import pandas as pd
 
+# Leitor próprio (tifffile + pyproj), sem GDAL/rasterio: as DLLs da GDAL podem
+# ser bloqueadas pelo Smart App Control do Windows.
+from .geotiff import open_geotiff, transform_bounds
+
 RASTER_EXTENSIONS = (".tif", ".tiff")
 MAX_GRID_CELLS = 2_000_000
-
-
-def _rasterio():
-    try:
-        import rasterio  # noqa: F401
-        return rasterio
-    except ImportError as exc:  # pragma: no cover
-        raise ValueError("O pacote 'rasterio' não está instalado no ambiente do EcoLab.") from exc
 
 
 def variable_name(path: str) -> str:
@@ -42,7 +38,7 @@ def variable_name(path: str) -> str:
 
 
 def _check_folder(folder: str) -> str:
-    folder = os.path.abspath(os.path.expanduser(str(folder or "").strip().strip('"')))
+    folder = os.path.abspath(os.path.expanduser(str(folder or "").strip().strip('"')))c
     if not os.path.isdir(folder):
         raise ValueError(f"Pasta não encontrada: {folder}")
     return folder
@@ -61,9 +57,6 @@ def _resolve_files(folder: str, files: list[str] | None) -> list[str]:
 
 def scan_folder(folder: str) -> dict:
     """Lista os rasters da pasta (e subpastas) com CRS, resolução e extensão."""
-    rasterio = _rasterio()
-    from rasterio.warp import transform_bounds
-
     folder = _check_folder(folder)
     out, errors, names = [], [], {}
     for root, _, filenames in os.walk(folder):
@@ -73,8 +66,8 @@ def scan_folder(folder: str) -> dict:
             path = os.path.join(root, fn)
             rel = os.path.relpath(path, folder)
             try:
-                with rasterio.open(path) as src:
-                    b = transform_bounds(src.crs, "EPSG:4326", *src.bounds) if src.crs else src.bounds
+                with open_geotiff(path) as src:
+                    b = transform_bounds(src.crs, src.bounds)
                     name = variable_name(path)
                     if name in names:
                         errors.append(f"'{rel}' e '{names[name]}' geram o mesmo nome de variável ({name}).")
@@ -86,7 +79,7 @@ def scan_folder(folder: str) -> dict:
                         "resolution": [float(src.res[0]), float(src.res[1])],
                         "width": src.width, "height": src.height,
                         "bounds": {"lonMin": b[0], "latMin": b[1], "lonMax": b[2], "latMax": b[3]},
-                        "nodata": None if src.nodata is None else float(src.nodata),
+                        "nodata": _json_nodata(src.nodata),
                         "sizeMB": round(os.path.getsize(path) / 1048576, 1),
                     })
             except Exception as exc:
@@ -94,6 +87,14 @@ def scan_folder(folder: str) -> dict:
     if not out:
         errors.append("Nenhum arquivo .tif encontrado na pasta.")
     return {"folder": folder, "files": out, "errors": errors}
+
+
+def _json_nodata(nodata):
+    """nodata para a resposta JSON: NaN/infinito não existem em JSON."""
+    if nodata is None:
+        return None
+    value = float(nodata)
+    return value if np.isfinite(value) else str(value)
 
 
 def _masked_float(arr: np.ndarray, nodata) -> np.ndarray:
@@ -112,7 +113,6 @@ def _read_at(src, lon: np.ndarray, lat: np.ndarray, strip_rows: int = 512) -> np
     Usada tanto nas ocorrências quanto no grid, para os dois receberem valores
     exatamente do mesmo jeito.
     """
-    rasterio = _rasterio()
     from pyproj import Transformer
 
     out = np.full(len(lon), np.nan)
@@ -122,7 +122,7 @@ def _read_at(src, lon: np.ndarray, lat: np.ndarray, strip_rows: int = 512) -> np
     xs, ys = lon[ok], lat[ok]
     if src.crs and src.crs.to_epsg() != 4326:
         xs, ys = Transformer.from_crs("EPSG:4326", src.crs, always_xy=True).transform(xs, ys)
-    rows, cols = rasterio.transform.rowcol(src.transform, xs, ys)
+    rows, cols = src.rowcol(xs, ys)
     rows, cols = np.asarray(rows), np.asarray(cols)
     inside = (rows >= 0) & (rows < src.height) & (cols >= 0) & (cols < src.width)
 
@@ -132,7 +132,7 @@ def _read_at(src, lon: np.ndarray, lat: np.ndarray, strip_rows: int = 512) -> np
         if not m.any():
             continue
         n = min(strip_rows, src.height - r0)
-        block = src.read(1, window=rasterio.windows.Window(0, r0, src.width, n))
+        block = src.read_rows(r0, n)
         values[m] = block[rows[m] - r0, cols[m]]
     out[ok] = _masked_float(values, src.nodata)
     return out
@@ -140,13 +140,12 @@ def _read_at(src, lon: np.ndarray, lat: np.ndarray, strip_rows: int = 512) -> np
 
 def sample_points(folder: str, files: list[str] | None, points: pd.DataFrame) -> pd.DataFrame:
     """Anexa a cada ponto (latitude/longitude) o valor de cada raster no pixel do ponto."""
-    rasterio = _rasterio()
 
     df = points.copy()
     lat = pd.to_numeric(df["latitude"], errors="coerce").to_numpy(dtype="float64")
     lon = pd.to_numeric(df["longitude"], errors="coerce").to_numpy(dtype="float64")
     for path in _resolve_files(folder, files):
-        with rasterio.open(path) as src:
+        with open_geotiff(path) as src:
             df[variable_name(path)] = _read_at(src, lon, lat)
     return df
 
@@ -158,9 +157,6 @@ def build_grid(folder: str, files: list[str] | None, resolution_deg: float = 0.1
     centro de cada célula (igual à leitura nas ocorrências). Por padrão cobre a
     interseção das extensões dos rasters.
     """
-    rasterio = _rasterio()
-    from rasterio.warp import transform_bounds
-
     paths = _resolve_files(folder, files)
     resolution_deg = float(resolution_deg)
     if resolution_deg <= 0:
@@ -171,8 +167,8 @@ def build_grid(folder: str, files: list[str] | None, resolution_deg: float = 0.1
     else:
         lon_min, lat_min, lon_max, lat_max = -180.0, -90.0, 180.0, 90.0
         for path in paths:
-            with rasterio.open(path) as src:
-                b = transform_bounds(src.crs, "EPSG:4326", *src.bounds) if src.crs else src.bounds
+            with open_geotiff(path) as src:
+                b = transform_bounds(src.crs, src.bounds)
             lon_min, lat_min = max(lon_min, b[0]), max(lat_min, b[1])
             lon_max, lat_max = min(lon_max, b[2]), min(lat_max, b[3])
     if lon_min >= lon_max or lat_min >= lat_max:
@@ -193,7 +189,7 @@ def build_grid(folder: str, files: list[str] | None, resolution_deg: float = 0.1
     # Cada célula recebe o valor do pixel original no seu centro, com a mesma
     # função usada nas ocorrências: treino e predição ficam consistentes.
     for path in paths:
-        with rasterio.open(path) as src:
+        with open_geotiff(path) as src:
             data[variable_name(path)] = _read_at(src, data["longitude"], data["latitude"])
         print(f"  grid: {variable_name(path)} lido")
 

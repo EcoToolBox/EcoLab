@@ -20,6 +20,30 @@ def set_tss_mode(mode: str | None):
     TSS_MODE = "0.5" if str(mode) == "0.5" else "max"
 
 
+# Fração dos dados separada para teste nas validações aleatória e repetida
+# (padrão 0,2 = 80% treino / 20% teste). Escolhida pelo usuário na tela de Modelos.
+TEST_SIZE = 0.2
+MIN_TEST_SIZE, MAX_TEST_SIZE = 0.1, 0.5
+
+
+def set_test_size(value) -> float:
+    """Aceita fração (0.25) ou porcentagem (25). Limita a 10%-50%."""
+    global TEST_SIZE
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        v = 0.2
+    if v > 1:
+        v /= 100.0
+    TEST_SIZE = round(min(MAX_TEST_SIZE, max(MIN_TEST_SIZE, v)), 4)
+    return TEST_SIZE
+
+
+def _split_label() -> str:
+    test = round(TEST_SIZE * 100)
+    return f"{100 - test}/{test}"
+
+
 def compute_metrics(y_true: np.ndarray, y_prob: np.ndarray, selected_metrics: list[str]) -> dict:
     """Calcula as métricas selecionadas para um conjunto (true, prob)."""
     metrics = {}
@@ -69,7 +93,7 @@ def run_validation(
         raise ValueError(f"validation_mode inválido: {validation_mode!r}. Use 'random', 'repeated' ou 'spatial'.")
 
     if validation_mode == "repeated":
-        # n_folds = número de repetições do split aleatório 80/20
+        # n_folds = número de repetições do split aleatório treino/teste
         return _run_repeated_validation(X, y, build_estimator, selected_metrics, n_folds, random_state)
     if validation_mode == "spatial":
         return _run_spatial_validation(
@@ -81,19 +105,20 @@ def run_validation(
 def _run_random_validation(X, y, build_estimator, selected_metrics, random_state) -> dict:
     try:
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=random_state, stratify=y
+            X, y, test_size=TEST_SIZE, random_state=random_state, stratify=y
         )
     except ValueError:
         print("⚠️  Stratify falhou — usando split sem estratificação.")
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=random_state
+            X, y, test_size=TEST_SIZE, random_state=random_state
         )
+    print(f"Validação aleatória {_split_label()}: {len(y_train)} para treino, {len(y_test)} para teste.")
 
     for split_name, split_y in [("treino", y_train), ("teste", y_test)]:
         if split_y.nunique() < 2:
             raise ValueError(
                 f"Split de {split_name} ficou com apenas uma classe após divisão. "
-                "Aumente o número de amostras ou reduza o test_size."
+                "Aumente o número de amostras ou mude a proporção de teste."
             )
 
     estimator = build_estimator()
@@ -107,6 +132,7 @@ def _run_random_validation(X, y, build_estimator, selected_metrics, random_state
     return {
         "validation_mode": "random",
         "n_folds": None,
+        "test_size": TEST_SIZE,
         "metrics": metrics,
         "metrics_std": None,
         "fold_metrics": None,
@@ -127,17 +153,17 @@ def _summarize_folds(fold_results, selected_metrics):
 
 
 def _run_repeated_validation(X, y, build_estimator, selected_metrics, n_repeats, random_state) -> dict:
-    """Split aleatório 80/20 repetido n vezes (como o biomod2: NbRunEval x DataSplit=80)."""
+    """Split aleatório treino/teste repetido n vezes (como o biomod2: NbRunEval x DataSplit)."""
     n_repeats = max(2, int(n_repeats))
     fold_results, oof, all_y, all_p = [], [], [], []
     for rep in range(n_repeats):
         seed = random_state + rep
         try:
             X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=seed, stratify=y
+                X, y, test_size=TEST_SIZE, random_state=seed, stratify=y
             )
         except ValueError:
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=seed)
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=seed)
         if y_train.nunique() < 2 or y_test.nunique() < 2:
             print(f"  Repetição {rep + 1} ignorada: faltam as duas classes em treino/teste.")
             continue
@@ -159,10 +185,11 @@ def _run_repeated_validation(X, y, build_estimator, selected_metrics, n_repeats,
     report = classification_report(
         np.concatenate(all_y), (np.concatenate(all_p) >= 0.5).astype(int), output_dict=True
     )
-    print(f"Validação aleatória repetida: {len(fold_results)} x 80/20. Métricas médias: {mean_metrics}")
+    print(f"Validação aleatória repetida: {len(fold_results)} x {_split_label()}. Métricas médias: {mean_metrics}")
     return {
         "validation_mode": "repeated",
         "n_folds": len(fold_results),
+        "test_size": TEST_SIZE,
         "metrics": mean_metrics,
         "metrics_std": std_metrics,
         "fold_metrics": fold_results,
@@ -237,3 +264,26 @@ def _run_spatial_validation(X, y, coords, build_estimator, selected_metrics, n_f
         "report": report,
         "oof": oof,
     }
+
+
+def explain_dropped(X: pd.DataFrame, y: pd.Series, mask: pd.Series) -> str:
+    """
+    Explica quantas linhas de cada classe foram descartadas por terem alguma
+    variável vazia (NaN) e quais variáveis causaram isso. Vai junto da mensagem
+    de erro quando sobram poucas amostras, para o usuário saber o que corrigir.
+    """
+    dropped = ~mask
+    if not dropped.any():
+        return ""
+    parts = []
+    for label, name in ((1, "presenças"), (0, "background/ausências")):
+        total = int((y == label).sum())
+        lost = int((dropped & (y == label)).sum())
+        if lost:
+            parts.append(f"{lost} de {total} {name}")
+    nan_counts = X[dropped].isna().sum()
+    nan_counts = nan_counts[nan_counts > 0].sort_values(ascending=False)
+    cols = ", ".join(f"{c} ({int(n)})" for c, n in nan_counts.head(5).items())
+    more = f" e mais {len(nan_counts) - 5}" if len(nan_counts) > 5 else ""
+    return (f" Descartados por variável vazia: {'; '.join(parts)}."
+            f" Variáveis sem valor nesses pontos: {cols}{more}.")

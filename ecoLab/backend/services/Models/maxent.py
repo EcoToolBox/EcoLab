@@ -4,6 +4,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.inspection import permutation_importance
 import pandas as pd
 from .validation import run_validation
+from .validation import explain_dropped
 
 
 def _prepare(df: pd.DataFrame, feature_cols: list[str]):
@@ -20,6 +21,9 @@ def _prepare(df: pd.DataFrame, feature_cols: list[str]):
     coords = df[["latitude", "longitude"]].copy()
 
     mask = X.notna().all(axis=1)
+    why = explain_dropped(X, y, mask)
+    if why:
+        print(" ", why.strip())
     X, y, coords = X[mask], y[mask], coords[mask]
 
     class_counts = y.value_counts()
@@ -28,9 +32,9 @@ def _prepare(df: pd.DataFrame, feature_cols: list[str]):
     print(f"Registros usados: {len(X)} ({n_presence} presenças, {n_background} background)")
 
     if n_presence < 5:
-        raise ValueError(f"Apenas {n_presence} registros de presença. São necessários pelo menos 5.")
+        raise ValueError(f"Apenas {n_presence} registros de presença. São necessários pelo menos 5." + why)
     if n_background < 5:
-        raise ValueError(f"Apenas {n_background} pontos de background. São necessários pelo menos 5.")
+        raise ValueError(f"Apenas {n_background} pontos de background. São necessários pelo menos 5." + why)
 
     return X, y, coords
 

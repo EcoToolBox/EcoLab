@@ -1,274 +1,133 @@
-import { Box, Typography, OutlinedInput, InputLabel, FormControl, IconButton, Popover, Button, Radio, RadioGroup} from "@mui/material";
-import {Visibility, VisibilityOff } from '@mui/icons-material';
-import { useState, useEffect} from "react";
-import FormGroup from '@mui/material/FormGroup';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Checkbox from '@mui/material/Checkbox';
-import PopupsMsg from "./PopUp";
-import occurrenceApi from "../../services/occurrenceApi";
-import { MANUAL_SPECIES_LIMIT } from "../../constants/taxonomy";
+import { useEffect, useState } from "react";
+import { Box, Checkbox, Chip, IconButton, InputAdornment, Link, TextField, Typography } from "@mui/material";
+import Visibility from "@mui/icons-material/Visibility";
+import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import { useT } from "../../i18n";
+import { BRAND } from "../../layout/Theme";
+import api from "../../services/api";
 
-const ALL_SOURCES = ["gbif", "inaturalist", "specieslink"];
+export const SOURCES = [
+  { key: "gbif", label: "GBIF", needs: ["email", "userId", "apiKey"] },
+  { key: "inaturalist", label: "iNaturalist", needs: [] },
+  { key: "specieslink", label: "speciesLink", needs: ["apiKey"] },
+];
 
-export default function SourcesCheckBox({
-    selectedSources, setSelectedSources, sourceConfig, setSourceConfig,
-    occurrenceMode, setOccurrenceMode, occurrenceUpload, setOccurrenceUpload,
-    selectedSpecies,
-}) {
-    const [showPassword, setShowPassword] = useState(false);
-    // Com mais de MANUAL_SPECIES_LIMIT espécies, buscar nas fontes externas
-    // faria uma consulta em massa; a única opção passa a ser subir a própria
-    // planilha. Antes o modo "sources"/"both" continuava selecionável aqui —
-    // só o botão de avançar ficava bloqueado — então dava pra marcar upload
-    // e mesmo assim ficar no modo "sources", e a planilha era ignorada
-    // silenciosamente (Results.js só lê o upload quando o modo é
-    // "upload"/"both").
-    const mustUpload = selectedSpecies?.length > MANUAL_SPECIES_LIMIT;
+/** Fonte pronta para buscar: dispensa credenciais ou já tem as que precisa. */
+export function sourceReady(key, credentials) {
+  const src = SOURCES.find((s) => s.key === key);
+  const cred = credentials?.[key];
+  if (!src?.needs.length) return true;
+  if (cred?.alreadyExists) return true;
+  return src.needs.every((f) => String(cred?.[f] ?? "").trim());
+}
 
-    useEffect(() => {
-        if (mustUpload && occurrenceMode !== "upload") {
-            setOccurrenceMode("upload");
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mustUpload]);
+function SecretField({ label, value, onChange }) {
+  const [show, setShow] = useState(false);
+  return (
+    <TextField
+      size="small"
+      label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      type={show ? "text" : "password"}
+      autoComplete="off"
+      InputProps={{
+        endAdornment: (
+          <InputAdornment position="end">
+            <IconButton size="small" onClick={() => setShow((s) => !s)} edge="end" aria-label={label}>
+              {show ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+            </IconButton>
+          </InputAdornment>
+        ),
+      }}
+    />
+  );
+}
 
-    const handleFileSelect = (event) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        setOccurrenceUpload({
-            file,
-            fileName: file.name,
-            columns: [],
-            preview: [],
-            mapping: { species: "", latitude: "", longitude: "", eventDate: "" },
-        });
-    };
+export default function Sources({ sources, credentials, onSources, onCredentials }) {
+  const t = useT();
 
-    useEffect(() => {
-        occurrenceApi.checkIfKeyExists("gbif")
-            .then((result) => setSourceConfig((prev) => ({ ...prev, gbif: { ...prev.gbif, alreadyExists: !!result } })))
-            .catch(() => setSourceConfig((prev) => ({ ...prev, gbif: { ...prev.gbif, alreadyExists: false } })));
+  // Já existem credenciais salvas nesta máquina? (então não pedimos de novo)
+  useEffect(() => {
+    ["gbif", "specieslink"].forEach((key) => {
+      api
+        .checkKey(key)
+        .then((r) => onCredentials(key, { alreadyExists: r === true || r?.success === true }))
+        .catch(() => onCredentials(key, { alreadyExists: false }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-        occurrenceApi.checkIfKeyExists("specieslink")
-            .then((result) => setSourceConfig((prev) => ({ ...prev, specieslink: { ...prev.specieslink, alreadyExists: !!result } })))
-            .catch(() => setSourceConfig((prev) => ({ ...prev, specieslink: { ...prev.specieslink, alreadyExists: false } })));
-    }, []);
+  const toggle = (key) =>
+    onSources(sources.includes(key) ? sources.filter((s) => s !== key) : [...sources, key]);
 
-    const gbifReady = !selectedSources.includes("gbif") || sourceConfig.gbif.alreadyExists ||
-        (sourceConfig.gbif.email && sourceConfig.gbif.userId && sourceConfig.gbif.apiKey);
-
-    const speciesLinkReady = !selectedSources.includes("specieslink") || sourceConfig.specieslink.alreadyExists ||
-        sourceConfig.specieslink.apiKey;
-
-    const canProceed = gbifReady && speciesLinkReady;
-
-    useEffect(() => {
-    }, [canProceed]);
-
-    const handleConfigChange = (source, field) => (event) => {
-        const value = event.target.value;
-        setSourceConfig((prev) => ({
-            ...prev,
-            [source]: {
-                ...prev[source],
-                [field]: value,
-            },
-        }));
-    };
-
-    const handleClickShowPassword = () => setShowPassword((show) => !show);
-    const handleMousePassword = (event) => event.preventDefault();
-
-    const handleChangeSources = (event) => {
-        const { name, checked } = event.target;
-        setSelectedSources((prev) =>
-            checked ? [...prev, name] : prev.filter((item) => item !== name)
-        );
-    };
-
-    const allSelected = ALL_SOURCES.every((s) => selectedSources.includes(s));
-    const someSelected = ALL_SOURCES.some((s) => selectedSources.includes(s)) && !allSelected;
-
-    const handleSelectAll = (checked) => {
-        setSelectedSources(checked ? [...ALL_SOURCES] : []);
-    };
-
-    return (
-        <Box>
-            <FormGroup label="Fontes de Dados" style={{ color: "#333" }}>
-                <Typography gutterBottom style={{ fontWeight: 600 }}>
-                    Como você quer fornecer os dados de ocorrência?
+  return (
+    <Box sx={{ display: "grid", gap: 1.5 }}>
+      {SOURCES.map((src) => {
+        const on = sources.includes(src.key);
+        const cred = credentials[src.key] ?? {};
+        const ready = sourceReady(src.key, credentials);
+        return (
+          <Box
+            key={src.key}
+            sx={{
+              border: "1.5px solid",
+              borderColor: on ? "secondary.main" : BRAND.border,
+              borderRadius: 2,
+              p: 1.5,
+              bgcolor: "background.paper",
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Checkbox checked={on} onChange={() => toggle(src.key)} inputProps={{ "aria-label": src.label }} />
+              <Box sx={{ flex: 1, cursor: "pointer" }} onClick={() => toggle(src.key)}>
+                <Typography variant="subtitle1" sx={{ lineHeight: 1.3 }}>
+                  {src.label}
                 </Typography>
-                {mustUpload && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        Com mais de {MANUAL_SPECIES_LIMIT} espécies selecionadas, a busca nas fontes externas
-                        fica desabilitada. Suba sua própria planilha de ocorrências para continuar.
-                    </Typography>
-                )}
-                <RadioGroup
-                    row
-                    value={occurrenceMode}
-                    onChange={(e) => setOccurrenceMode(e.target.value)}
-                    sx={{ mb: 1 }}
-                >
-                    {!mustUpload && (
-                        <FormControlLabel value="sources" control={<Radio />} label="Usar as fontes que fornecemos" />
-                    )}
-                    <FormControlLabel value="upload" control={<Radio />} label="Subir minha própria planilha" />
-                    {!mustUpload && (
-                        <FormControlLabel value="both" control={<Radio />} label="Usar os dois" />
-                    )}
-                </RadioGroup>
-
-                {(occurrenceMode === "upload" || occurrenceMode === "both") && (
-                    <Box sx={{ mb: 2 }}>
-                        <Button variant="outlined" component="label">
-                            {occurrenceUpload.fileName || "Selecionar planilha (CSV)"}
-                            <input type="file" accept=".csv,.tsv,.txt" hidden onChange={handleFileSelect} />
-                        </Button>
-                        {occurrenceUpload.fileName && (
-                            <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
-                                ✓ {occurrenceUpload.fileName} selecionado. Na próxima etapa você vai indicar quais colunas correspondem aos campos obrigatórios.
-                            </Typography>
-                        )}
-                    </Box>
-                )}
-
-              {(occurrenceMode === "sources" || occurrenceMode === "both") && (
-              <>
-                <Typography gutterBottom style={{ fontWeight: 600 }}>
-                    Selecione as fontes de dados
+                <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                  {t(`occ.sources.${src.key}`)}
                 </Typography>
-
-                {/* Selecionar todas */}
-                <FormControlLabel
-                    sx={{ mb: 0.5 }}
-                    control={
-                        <Checkbox
-                            checked={allSelected}
-                            indeterminate={someSelected}
-                            onChange={(e) => handleSelectAll(e.target.checked)}
-                        />
-                    }
-                    label={
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: "#333" }}>
-                            Selecionar todas
-                        </Typography>
-                    }
+              </Box>
+              {on && src.needs.length > 0 && (
+                <Chip
+                  size="small"
+                  icon={ready ? <CheckCircleIcon /> : undefined}
+                  color={ready ? "success" : "warning"}
+                  variant="outlined"
+                  label={cred.alreadyExists ? t("occ.sources.saved") : ready ? t("occ.sources.filled") : t("occ.sources.needsLogin")}
                 />
-
-                {/* GBIF */}
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            name="gbif"
-                            checked={selectedSources.includes("gbif")}
-                            onChange={handleChangeSources}
-                        />
-                    }
-                    label="GBIF"
-                />
-                {selectedSources.includes("gbif") && sourceConfig.gbif.alreadyExists === false && (
-                    <Box>
-                        <FormControl sx={{ m: 1, width: '45ch' }} variant="outlined">
-                            <InputLabel>Email</InputLabel>
-                            <OutlinedInput
-                                required
-                                value={sourceConfig.gbif.email}
-                                onChange={handleConfigChange("gbif", "email")}
-                            />
-                        </FormControl>
-                        <FormControl sx={{ m: 1, width: '25ch' }} variant="outlined">
-                            <InputLabel>User ID</InputLabel>
-                            <OutlinedInput
-                                required
-                                value={sourceConfig.gbif.userId}
-                                onChange={handleConfigChange("gbif", "userId")}
-                            />
-                        </FormControl>
-                        <FormControl sx={{ m: 1, width: '50ch', flexDirection: "row" }} variant="outlined">
-                            <InputLabel>Password</InputLabel>
-                            <OutlinedInput
-                                required
-                                type={showPassword ? "text" : "password"}
-                                value={sourceConfig.gbif.apiKey}
-                                onChange={handleConfigChange("gbif", "apiKey")}
-                                endAdornment={
-                                    <IconButton
-                                        onClick={handleClickShowPassword}
-                                        onMouseDown={handleMousePassword}
-                                        onMouseUp={handleMousePassword}
-                                        edge="end"
-                                    >
-                                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                                    </IconButton>
-                                }
-                                label="Password"
-                            />
-                            <PopupsMsg msg="Use as mesmas credenciais da sua conta GBIF" />
-                        </FormControl>
-                    </Box>
-                )}
-                {selectedSources.includes("gbif") && sourceConfig.gbif.alreadyExists === true && (
-                    <Typography variant="body2" color="success.main" sx={{ ml: 1 }}>
-                        ✓ Credenciais GBIF já configuradas
-                    </Typography>
-                )}
-
-                {/* iNaturalist */}
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            name="inaturalist"
-                            checked={selectedSources.includes("inaturalist")}
-                            onChange={handleChangeSources}
-                        />
-                    }
-                    label="INaturalist"
-                />
-
-                {/* SpeciesLink */}
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            name="specieslink"
-                            checked={selectedSources.includes("specieslink")}
-                            onChange={handleChangeSources}
-                        />
-                    }
-                    label="SpeciesLink"
-                />
-                {selectedSources.includes("specieslink") && sourceConfig.specieslink.alreadyExists === false && (
-                    <FormControl sx={{ m: 1, width: '50ch', flexDirection: "row" }} variant="outlined">
-                        <InputLabel>API key</InputLabel>
-                        <OutlinedInput
-                            required
-                            value={sourceConfig.specieslink.apiKey}
-                            onChange={handleConfigChange("specieslink", "apiKey")}
-                            type={showPassword ? 'text' : 'password'}
-                            endAdornment={
-                                <IconButton
-                                    onClick={handleClickShowPassword}
-                                    onMouseDown={handleMousePassword}
-                                    onMouseUp={handleMousePassword}
-                                    edge="end"
-                                >
-                                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                                </IconButton>
-                            }
-                            label="API key"
-                        />
-                        <PopupsMsg msg={"Para adquirir a API key do SpeciesLink, acesse <a target='_blank' href='https://specieslink.net/aut/login/?next=/aut/profile/apikeys'>species link site</a>"} />
-                    </FormControl>
-                )}
-                {selectedSources.includes("specieslink") && sourceConfig.specieslink.alreadyExists === true && (
-                    <Typography variant="body2" color="success.main" sx={{ ml: 1 }}>
-                        ✓ API key SpeciesLink já configurada
-                    </Typography>
-                )}
-              </>
               )}
-            </FormGroup>
-        </Box>
-    );
+            </Box>
+
+            {on && src.key === "gbif" && !cred.alreadyExists && (
+              <Box sx={{ display: "grid", gap: 1.5, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr 1fr" }, mt: 1.5, ml: { md: 6 } }}>
+                <TextField size="small" label="E-mail" value={cred.email ?? ""} onChange={(e) => onCredentials("gbif", { email: e.target.value })} />
+                <TextField size="small" label={t("occ.sources.gbifUser")} value={cred.userId ?? ""} onChange={(e) => onCredentials("gbif", { userId: e.target.value })} />
+                <SecretField label={t("occ.sources.password")} value={cred.apiKey ?? ""} onChange={(v) => onCredentials("gbif", { apiKey: v })} />
+                <Typography variant="caption" sx={{ color: "text.secondary", gridColumn: "1 / -1" }}>
+                  {t("occ.sources.gbifHelp")}{" "}
+                  <Link href="https://www.gbif.org/user/profile" target="_blank" rel="noreferrer">
+                    gbif.org
+                  </Link>
+                </Typography>
+              </Box>
+            )}
+
+            {on && src.key === "specieslink" && !cred.alreadyExists && (
+              <Box sx={{ display: "grid", gap: 1, mt: 1.5, ml: { md: 6 }, maxWidth: 520 }}>
+                <SecretField label="API key" value={cred.apiKey ?? ""} onChange={(v) => onCredentials("specieslink", { apiKey: v })} />
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  {t("occ.sources.splinkHelp")}{" "}
+                  <Link href="https://specieslink.net/aut/login/?next=/aut/profile/apikeys" target="_blank" rel="noreferrer">
+                    specieslink.net
+                  </Link>
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        );
+      })}
+    </Box>
+  );
 }

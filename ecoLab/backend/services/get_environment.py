@@ -37,7 +37,7 @@ def json_to_geodataframe(data: list[dict], lat_col="latitude", lon_col="longitud
     if "eventDate" not in df.columns:
         df["eventDate"] = fallback_date
     else:
-        dates = pd.to_datetime(df["eventDate"], errors="coerce", utc=True)
+        dates = pd.to_datetime(df["eventDate"], format="ISO8601", errors="coerce", utc=True)
         df["eventDate"] = dates.dt.strftime("%Y-%m-%d").fillna(fallback_date)
 
     geometry = [Point(lon, lat) for lat, lon in zip(df[lat_col], df[lon_col])]
@@ -45,7 +45,39 @@ def json_to_geodataframe(data: list[dict], lat_col="latitude", lon_col="longitud
 
 
 ENV_COLUMNS = ("NDVI", "NDWI", "tavg", "prec")
-_KEY = ["_lat_key", "_lon_key", "eventDate"]
+
+# Período de referência do Sentinel quando os pontos não têm data (o mesmo
+# para ocorrências e grid, para treino e predição usarem a mesma composição).
+REFERENCE_WINDOW = ("2022-01-01", "2023-01-01")
+
+
+def _patch_sentinel_dates():
+    """
+    O ecoenv instalado calcula a janela de datas com min/max de eventDate e
+    quebra quando todas as datas são vazias ("NaTType does not support
+    strftime"), e aí todos os lotes falham e o NDVI/NDWI some. Sem data,
+    usamos a janela de referência; com data, o comportamento original.
+    """
+    try:
+        from ecoenv import sentinel as _sentinel
+    except Exception:
+        return
+    original = getattr(_sentinel, "get_date", None)
+    if original is None or getattr(original, "_ecolab_patched", False):
+        return
+
+    def get_date(event_date):
+        dates = pd.to_datetime(pd.Series(event_date), errors="coerce")
+        if dates.isna().all():
+            return REFERENCE_WINDOW
+        return original(dates.dropna())
+
+    get_date._ecolab_patched = True
+    _sentinel.get_date = get_date
+# As consultas vão sem data (período de referência), então o resultado do
+# ecoenv vem com eventDate vazio: a junção é só pela coordenada. Antes ela
+# usava também a data, nada casava e todas as variáveis ficavam vazias.
+_KEY = ["_lat_key", "_lon_key"]
 
 
 def _with_keys(df: pd.DataFrame) -> pd.DataFrame:
@@ -73,12 +105,14 @@ def _attach_env_to_input(base: pd.DataFrame, env: pd.DataFrame) -> pd.DataFrame:
     if env.empty or not env_cols:
         return out
     left = _with_keys(out)
-    right = _with_keys(env[["latitude", "longitude", "eventDate", *env_cols]])
+    right = _with_keys(env[["latitude", "longitude", *env_cols]].assign(eventDate=None))
     for c in env_cols:
         right[c] = pd.to_numeric(right[c], errors="coerce")
     right = right.groupby(_KEY, dropna=False)[env_cols].mean().reset_index()
     merged = left.merge(right, on=_KEY, how="left")
     merged = merged.drop(columns=["_lat_key", "_lon_key"])
+    if "eventDate" not in merged.columns and "eventDate" in out.columns:
+        merged["eventDate"] = None
     merged["eventDate"] = out["eventDate"].to_numpy()  # mantém a data como veio
     for c in env_cols:
         filled = int(merged[c].notna().sum())
@@ -102,6 +136,7 @@ def get_environment(env_variables: dict):
         query = gdf.copy()
         query["eventDate"] = None
         with _EE_LOCK:
+            _patch_sentinel_dates()
             ecoenv.autenticateEE(project=gee_project)
             result = ecoenv.get_environment_data(
                 gdf=query,
@@ -109,6 +144,11 @@ def get_environment(env_variables: dict):
                 ndwi="ndwi" in index,
                 temperature="temperature" in index,
                 precipitation="precipitation" in index,
+            )
+        if result is None or len(result) == 0:
+            raise ValueError(
+                "O Earth Engine não devolveu nenhuma variável. Veja o terminal do EcoLab: "
+                "se aparecer 'Batch ... failed', a consulta ao Sentinel falhou."
             )
         base = pd.DataFrame(gdf.drop(columns=["geometry"], errors="ignore"))
         if len(result) == len(base) and result.index.equals(gdf.index):

@@ -1,3 +1,4 @@
+import re
 import csv
 import io
 import numpy as np
@@ -102,6 +103,52 @@ def _parse_presence(series: pd.Series) -> tuple[pd.Series, list[str]]:
     return parsed, errors
 
 
+_DATE_FORMATS = (
+    "%d/%m/%Y", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d-%m-%Y",
+    "%Y/%m/%d", "%Y-%m", "%m/%Y",
+)
+
+
+def _parse_event_date(series: pd.Series) -> tuple[pd.Series, list[str]]:
+    """
+    Normaliza a coluna de data para AAAA-MM-DD, aceitando os formatos comuns:
+    ISO com ou sem hora ("2022-04-27T09:25:21", "2022-04-27"), dia/mês/ano
+    ("27/04/2022") e só o ano ("2001" ou 2001.0, vira 2001-01-01).
+    Datas que não forem reconhecidas ficam vazias (com aviso), sem descartar a linha.
+    """
+    text = series.astype(object).where(series.notna(), None).map(
+        lambda v: None if v is None else str(v).strip()
+    )
+    text = text.where(text.map(lambda v: bool(v)), None)
+    # Intervalo ISO ("2015-06-01/2015-06-03", como o GBIF exporta): usa o início.
+    text = text.map(lambda v: v.split("/")[0] if v and re.match(r"^\d{4}-\d{2}", v) and "/" in v else v)
+    parsed = pd.to_datetime(text, format="ISO8601", errors="coerce", utc=True)
+    for fmt in _DATE_FORMATS:
+        missing = parsed.isna() & text.notna()
+        if not missing.any():
+            break
+        parsed = parsed.where(~missing, pd.to_datetime(text[missing], format=fmt, errors="coerce", utc=True))
+    # Só o ano (inteiro ou número com .0)
+    missing = parsed.isna() & text.notna()
+    if missing.any():
+        years = pd.to_numeric(text[missing], errors="coerce")
+        ok = years.notna() & (years % 1 == 0) & years.between(1700, 2100)
+        if ok.any():
+            parsed.loc[ok[ok].index] = pd.to_datetime(
+                years[ok].astype(int).astype(str) + "-01-01", format="%Y-%m-%d", utc=True
+            )
+    result = parsed.dt.strftime("%Y-%m-%d").where(parsed.notna(), None)
+    errors = []
+    n_bad = int((parsed.isna() & text.notna()).sum())
+    if n_bad:
+        examples = ", ".join(sorted(set(text[parsed.isna() & text.notna()].astype(str)))[:3])
+        errors.append(
+            f"{n_bad} data(s) não reconhecida(s) e deixada(s) em branco (ex.: {examples}). "
+            "Use AAAA-MM-DD, DD/MM/AAAA ou só o ano."
+        )
+    return result, errors
+
+
 def _to_records(df: pd.DataFrame) -> list[dict]:
     # mirrors the NaN/inf -> None handling used in get_environment.py so the
     # payload is always JSON-serializable
@@ -147,11 +194,16 @@ def parse_occurrence_upload(file_bytes: bytes, filename: str, mapping: dict) -> 
     if "bufferKm" in df.columns:
         df["bufferKm"] = pd.to_numeric(df["bufferKm"], errors="coerce")
 
+    date_errors = []
+    if "eventDate" in df.columns:
+        df["eventDate"], date_errors = _parse_event_date(df["eventDate"])
+        df["year"] = pd.to_numeric(df["eventDate"].str[:4], errors="coerce")
+
     df["source"] = "user_upload"
 
     return {
         "success": True,
-        "errors": coord_errors + presence_errors,
+        "errors": coord_errors + presence_errors + date_errors,
         "imported": len(df),
         "data": _to_records(df),
     }

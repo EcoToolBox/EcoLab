@@ -1,58 +1,68 @@
+// Nomes próprios dos modelos e métricas (iguais nos dois idiomas).
+// Descrições e rótulos traduzidos ficam em i18n (models.desc.*, metrics.desc.*).
+export const MODEL_LABELS = {
+  random_forest: "Random Forest",
+  brt: "BRT",
+  gam: "GAM",
+  maxent: "MaxEnt",
+  svm: "SVM",
+  ensemble: "Ensemble",
+};
 
-export const MODELS = [
-  { value: "maxent", label: "MaxEnt", description: "Maximum Entropy — funciona bem com presence only e poucos dados." },
-  { value: "gam", label: "GAM", description: "Generalized Additive Model — modela relações não-lineares entre variáveis." },
-  { value: "brt", label: "BRT", description: "Boosted Regression Trees — robusto e lida bem com interações entre variáveis." },
-  { value: "random_forest", label: "Random Forest", description: "Ensemble de árvores de decisão — alta acurácia e resistente a overfitting." },
-  { value: "svm", label: "SVM", description: "Support Vector Machine — eficaz em espaços de alta dimensionalidade." },
+export const MODEL_KEYS = ["random_forest", "brt", "gam", "maxent", "svm"];
+export const KDE_MODELS = ["gam", "random_forest", "brt"];
+
+export const METRIC_LABELS = { auc: "AUC", tss: "TSS", boyce: "Boyce" };
+export const METRIC_KEYS = ["auc", "tss", "boyce"];
+
+/**
+ * Faixas de interpretação das métricas (Swets 1988 para AUC; Allouche et al.
+ * 2006 para TSS; Hirzel et al. 2006 para Boyce). Usadas só para colorir os
+ * resultados e sinalizar modelos fracos.
+ */
+export const METRIC_BANDS = {
+  auc: [
+    { min: 0.9, level: "excellent" },
+    { min: 0.8, level: "good" },
+    { min: 0.7, level: "fair" },
+    { min: -Infinity, level: "poor" },
+  ],
+  tss: [
+    { min: 0.8, level: "excellent" },
+    { min: 0.6, level: "good" },
+    { min: 0.4, level: "fair" },
+    { min: -Infinity, level: "poor" },
+  ],
+  boyce: [
+    { min: 0.8, level: "excellent" },
+    { min: 0.5, level: "good" },
+    { min: 0.0, level: "fair" },
+    { min: -Infinity, level: "poor" },
+  ],
+};
+
+export function metricLevel(metric, value) {
+  if (value == null || Number.isNaN(value)) return null;
+  return (METRIC_BANDS[metric] ?? METRIC_BANDS.auc).find((b) => value >= b.min)?.level ?? null;
+}
+
+export const LEVEL_COLORS = {
+  excellent: { bg: "#e3f1dc", fg: "#2f5d12" },
+  good: { bg: "#eef5e3", fg: "#4f7a1f" },
+  fair: { bg: "#fdf1dc", fg: "#8a5a00" },
+  poor: { bg: "#fbe4df", fg: "#a3271b" },
+};
+
+// Classes de adequabilidade (mesmas do backend e de Zhao et al. 2025).
+export const SUITABILITY_CLASSES = [
+  { key: "unsuitable", range: "0–0,2", color: "#ffffcc" },
+  { key: "low", range: "0,2–0,4", color: "#fed976" },
+  { key: "moderate", range: "0,4–0,6", color: "#fd8d3c" },
+  { key: "high", range: "0,6–1", color: "#bd0026" },
 ];
 
-export const PRESENCE_TYPES = [
-  {
-    value: "presence_only",
-    label: "Presence Only",
-    description: "Usa apenas registros de presença da espécie. Indicado quando não há dados confiáveis de ausência. Modelos como MaxEnt foram desenvolvidos especificamente para esse cenário.",
-  },
-  {
-    value: "presence_pseudoabsence",
-    label: "Presence / Pseudoausência",
-    description: "Combina registros de presença com pontos de pseudoausência gerados aleatoriamente na área de estudo. Permite usar modelos que requerem dados de ausência, geralmente com melhor performance discriminativa.",
-  },
-];
-
-export const METRICS = [
-  { value: "auc", label: "AUC", description: "Area Under the Curve — mede a capacidade discriminativa do modelo. Valores próximos de 1 indicam melhor desempenho." },
-  { value: "tss", label: "TSS", description: "True Skill Statistic — independente da prevalência da espécie. Varia de -1 a 1, onde 1 é perfeito e 0 equivale a aleatoriedade." },
-  { value: "boyce", label: "Boyce Index", description: "Avalia o modelo apenas com dados de presença, ideal para modelos presence only. Varia de -1 a 1." },
-];
-
-export const VALIDATION_MODES = [
-  {
-    value: "random",
-    label: "Aleatória",
-    description: "Divide os dados em 80% treino / 20% teste de forma aleatória (estratificada). Recomendado para uso geral.",
-  },
-  {
-    value: "repeated",
-    label: "Aleatória repetida",
-    description: "Repete a divisão aleatória 80% treino / 20% teste várias vezes e mostra a média e o desvio das métricas. É o que o biomod2 faz (NbRunEval com DataSplit = 80).",
-  },
-  {
-    value: "spatial",
-    label: "Espacial",
-    description: "Agrupa os pontos por coordenadas (K-means) em blocos geográficos e usa cada bloco como fold de teste. Reduz o otimismo causado por autocorrelação espacial — recomendado quando presenças e background estão espacialmente agrupados, ou para reproduzir estudos que usam essa abordagem.",
-  },
-];
-
-export const BACKGROUND_SOURCES = [
-  {
-    value: "grid_random",
-    label: "Grid aleatório",
-    description: "O background é amostrado automaticamente do grid ambiental gerado para o país/área selecionada. Uso genérico, recomendado na maioria dos casos.",
-  },
-  {
-    value: "provided",
-    label: "Arquivo / background fornecido",
-    description: "Usa a planilha ambiental enviada por você (etapa de Ambiente) como grid de background e de predição, em vez de gerar um grid automático. Útil para reproduzir um estudo específico com pontos de background já definidos.",
-  },
+// Escala de cor do mapa (a mesma do backend, faixas de 0,1).
+export const HEAT_COLORS = [
+  "#ffffcc", "#ffeda0", "#fed976", "#feb24c", "#fd8d3c",
+  "#fc4e2a", "#e31a1c", "#bd0026", "#9e0026", "#800026",
 ];

@@ -13,6 +13,11 @@ def _country_to_iso2(country: str) -> str:
         raise ValueError("Selecione um país válido para consultar o GBIF.")
     if len(normalized) == 2 and normalized.isalpha():
         return normalized.upper()
+    from . import world as _world
+
+    code = _world.iso2(normalized)
+    if code:
+        return code
     try:
         return pycountry.countries.lookup(normalized).alpha_2
     except LookupError as exc:

@@ -226,6 +226,8 @@ function ModelAccordion({ model, modelData, index }) {
   const foldMetrics     = modelData?.fold_metrics ?? null;
   const validationMode  = modelData?.validation_mode ?? "random";
   const nFolds          = modelData?.n_folds ?? null;
+  const testPct         = Math.round((modelData?.test_size ?? 0.2) * 100);
+  const splitLabel      = `${100 - testPct}/${testPct}`;
   const label           = model === "ensemble" ? "Ensemble (média ponderada)" : (MODEL_LABELS[model] ?? model);
   const hasMetrics      = Object.keys(metrics).length > 0;
   const varImportance   = modelData?.variable_importance ?? modelData?.variableImportance ?? {};
@@ -255,8 +257,8 @@ function ModelAccordion({ model, modelData, index }) {
           <Chip
             label={
               validationMode === "spatial" ? `Validação espacial (${nFolds} folds)`
-                : validationMode === "repeated" ? `Validação aleatória (${nFolds}x 80/20)`
-                : "Validação aleatória"
+                : validationMode === "repeated" ? `Validação aleatória (${nFolds}x ${splitLabel})`
+                : `Validação aleatória (${splitLabel})`
             }
             size="small"
             variant="outlined"

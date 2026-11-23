@@ -56,3 +56,21 @@ const GLOBI_INTERACTIONS = [
 ];
 
 export default GLOBI_INTERACTIONS;
+
+// Grupos usados na etapa Ambiente (antes eram 49 caixas soltas).
+export const INTERACTION_GROUPS = [
+  { key: "feeding", types: ["eats", "eatenBy", "preysOn", "preyedUponBy", "kills", "killedBy", "acquiresNutrientsFrom", "providesNutrientsFor"] },
+  { key: "pollination", types: ["pollinates", "pollinatedBy", "visitsFlowersOf", "flowersVisitedBy", "visits", "visitedBy"] },
+  { key: "parasitism", types: ["parasiteOf", "hasParasite", "endoparasiteOf", "hasEndoparasite", "ectoparasiteOf", "hasEctoparasite", "parasitoidOf", "hasParasitoid", "hemiparasiteOf", "rootparasiteOf", "hostOf", "hasHost", "pathogenOf", "hasPathogen", "vectorOf", "hasVector"] },
+  { key: "mutualism", types: ["symbiontOf", "mutualistOf", "commensalistOf", "epiphyteOf", "hasEpiphyte", "arbuscularMycorrhizalHostOf", "hasArbuscularMycorrhizalHost", "ectomycorrhizalHostOf", "hasEctomycorrhizalHost", "allelopathOf"] },
+  { key: "dispersal", types: ["dispersalVectorOf", "hasDispersalVector"] },
+  { key: "habitat", types: ["createsHabitatFor", "hasHabitat", "coOccursWith", "coRoostsWith", "adjacentTo"] },
+  { key: "general", types: ["interactsWith", "ecologicallyRelatedTo"] },
+];
+
+/** Rótulo do tipo de interação: português da lista acima; em inglês, o nome do GloBI legível. */
+export function interactionLabel(value, lang) {
+  if (lang === "pt") return GLOBI_INTERACTIONS.find((i) => i.value === value)?.label ?? value;
+  return value.replace(/([A-Z])/g, " $1").toLowerCase().replace(/^./, (c) => c.toUpperCase());
+}
+

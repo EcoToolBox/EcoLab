@@ -1,39 +1,29 @@
-import { useState, useEffect } from "react";
-import taxonomyApi from "../services/taxonomyApi";
+import { useEffect, useState } from "react";
 import { useDebounce } from "./useDebounce";
+import api from "../services/api";
 
 export function useSpeciesAutocomplete() {
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  const debouncedQuery = useDebounce(query, 400);
+  const debounced = useDebounce(query, 400);
 
   useEffect(() => {
-    if (!debouncedQuery.trim()) {
+    if (debounced.trim().length < 3) {
       setOptions([]);
-      return;
+      return undefined;
     }
-
-    let cancelled = false;
+    let active = true;
     setLoading(true);
-
-    taxonomyApi
-      .autocomplete(debouncedQuery)
-      .then((data) => {
-        if (!cancelled) setOptions(data);
-      })
-      .catch(() => {
-        if (!cancelled) setOptions([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
+    api
+      .autocomplete(debounced.trim())
+      .then((result) => active && setOptions(Array.isArray(result) ? result : []))
+      .catch(() => active && setOptions([]))
+      .finally(() => active && setLoading(false));
     return () => {
-      cancelled = true;
+      active = false;
     };
-  }, [debouncedQuery]);
+  }, [debounced]);
 
   return { query, setQuery, options, loading };
 }

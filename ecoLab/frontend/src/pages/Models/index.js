@@ -1,562 +1,467 @@
+import { useMemo, useState } from "react";
 import {
-    Box, Typography, Checkbox, FormControlLabel, FormGroup, Divider, Tooltip, IconButton,
-    RadioGroup, Radio, TextField, Alert, Button, CircularProgress,
+  Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Checkbox, Chip, FormControl, FormControlLabel,
+  InputLabel, MenuItem, Select, Slider, Switch, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
 } from "@mui/material";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import StepActions from "../../components/StepActions";
-import { useState, useEffect } from "react";
-import { MODELS, PRESENCE_TYPES, METRICS, VALIDATION_MODES, BACKGROUND_SOURCES } from "../../constants/models";
-import modelApi from "../../services/modelApi";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import { useNavigate } from "react-router-dom";
+import { useI18n } from "../../i18n";
+import { useAnalysis, DEFAULT_MODELS } from "../../state/AnalysisContext";
+import { PageHeader, Section, StepFooter, InfoTip } from "../../components/ui";
+import { BRAND } from "../../layout/Theme";
+import { MODEL_KEYS, MODEL_LABELS, KDE_MODELS, METRIC_KEYS, METRIC_LABELS } from "../../constants/models";
+import { selectedRows, summarizeOccurrences } from "../../utils/data";
+import api from "../../services/api";
+import { MIN_PRESENCES, FEW_PRESENCES } from "../Occurrences";
 
-export default function Models({ selectedSpecies, modelsData, setModelsData, envGridData, environmentMode, envUpload, rasterEnv }) {
-    // A planilha ambiental só é processada depois desta tela (etapa de
-    // resultado), então aqui olhamos se ela foi SELECIONADA na etapa de
-    // Ambiente, e não se envGridData já foi preenchido.
-    const usesEnvUpload = environmentMode === "upload" || environmentMode === "both";
-    const usesRasters = environmentMode === "rasters" && (rasterEnv?.files?.length ?? 0) > 0;
-    const hasEnvSpreadsheet = usesRasters || (usesEnvUpload && !!envUpload?.file) || (envGridData?.length ?? 0) > 0;
-    const [presenceType, setPresenceType] = useState("presence_only");
-    const [selectedModels, setSelectedModels] = useState([]);
-    const [selectedMetrics, setSelectedMetrics] = useState([]);
+// Campos que ficam em "Avançado" (o resto aparece direto na tela).
+const ADVANCED_KEYS = [
+  "presenceType", "selectedMetrics", "validationMode", "nFolds", "nRepeats", "backgroundRatio", "backgroundSource",
+  "backgroundBufferKm", "tssMode", "kdeTarget", "customGrid",
+];
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-    // Validação (aleatória continua sendo o padrão para uso genérico;
-    // espacial é uma escolha explícita).
-    const [validationMode, setValidationMode] = useState(modelsData?.validationMode ?? "random");
-    const [nFolds, setNFolds] = useState(modelsData?.nFolds ?? 10);
-    const [backgroundRatio, setBackgroundRatio] = useState(modelsData?.backgroundRatio ?? 2);
-    const [backgroundSource, setBackgroundSource] = useState(modelsData?.backgroundSource ?? "grid_random");
-    const [nRepeats, setNRepeats] = useState(modelsData?.nRepeats ?? 5);
-    const [backgroundBufferKm, setBackgroundBufferKm] = useState(modelsData?.backgroundBufferKm ?? 0);
-    // TSS no limiar que maximiza o TSS (padrão do biomod2) ou em 0,5
-    const [tssMode, setTssMode] = useState(modelsData?.tssMode ?? "max");
-    // Modo experimental: resposta = densidade das ocorrências (KDE) em vez de 1/0
-    const [kdeTarget, setKdeTarget] = useState(modelsData?.kdeTarget ?? { enabled: false, bandwidthKm: 0 });
-    const KDE_MODELS = ["gam", "random_forest", "brt"];
+export function modelAllowed(key, m) {
+  if (m.presenceType === "presence_only") return key === "maxent";
+  if (m.kdeTarget?.enabled) return KDE_MODELS.includes(key);
+  return true;
+}
 
-    // Grid de predição (opcional): grid regular cobrindo a área, usado só
-    // para desenhar o mapa. O arquivo fica salvo no backend; aqui guardamos
-    // só o id e um resumo.
-    const [predictionGrid, setPredictionGrid] = useState(modelsData?.predictionGrid ?? null);
+export default function Models() {
+  const { t, lang } = useI18n();
+  const navigate = useNavigate();
+  const { state, update, envReady } = useAnalysis();
+  const m = state.models;
+  const { env } = state;
+  const set = (patch) => update("models", patch);
+  const [gridBusy, setGridBusy] = useState(false);
+  const [gridError, setGridError] = useState(null);
 
-    // Ensemble por média ponderada (como o EMwmean do biomod2): entram os
-    // modelos com a métrica >= mínimo, cada um com peso proporcional à métrica.
-    const [ensemble, setEnsemble] = useState(
-        modelsData?.ensemble ?? { enabled: false, metric: "tss", threshold: 0 }
-    );
-    const [gridUploading, setGridUploading] = useState(false);
-    const [gridError, setGridError] = useState(null);
+  const summary = useMemo(() => summarizeOccurrences(selectedRows(state.occ, env.finalData)), [env.finalData, state.occ.excludedSpecies]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nf = new Intl.NumberFormat(lang === "pt" ? "pt-BR" : "en-US");
+  const blocked = summary.species.filter((s) => s.unique < MIN_PRESENCES);
+  const runnable = summary.species.length - blocked.length;
 
-    useEffect(() => {
-      setModelsData({
-        presenceType, selectedModels, selectedMetrics,
-        validationMode, nFolds, nRepeats, backgroundRatio, backgroundSource, backgroundBufferKm, tssMode, kdeTarget,
-        predictionGrid,
-        predictionGridId: predictionGrid?.gridId ?? null,
-        ensemble,
-      });
-    }, [presenceType, selectedModels, selectedMetrics, validationMode, nFolds, nRepeats, backgroundRatio, backgroundSource, backgroundBufferKm, tssMode, kdeTarget, predictionGrid, ensemble, setModelsData]);
+  const models = m.selectedModels.filter((k) => modelAllowed(k, m));
+  const ensembleAvailable = m.presenceType !== "presence_only" && models.length >= 2;
+  const changed = ADVANCED_KEYS.filter((k) => !same(m[k], DEFAULT_MODELS[k]));
+  const isPA = m.presenceType !== "presence_only";
 
-    const ensembleAvailable = presenceType !== "presence_only" && selectedModels.length >= 2;
-    const updateEnsemble = (patch) => {
-        const next = { ...ensemble, ...patch };
-        setEnsemble(next);
-        // A métrica usada como peso precisa ser calculada.
-        if (next.enabled && !selectedMetrics.includes(next.metric)) {
-            setSelectedMetrics((prev) => [...prev, next.metric]);
-        }
-    };
+  const setPresenceType = (presenceType) =>
+    set({
+      presenceType,
+      ...(presenceType === "presence_only"
+        ? { selectedModels: ["maxent"], kdeTarget: { ...m.kdeTarget, enabled: false } }
+        : {}),
+    });
+  const toggleModel = (k) =>
+    set({ selectedModels: m.selectedModels.includes(k) ? m.selectedModels.filter((x) => x !== k) : [...m.selectedModels, k] });
+  const toggleMetric = (k) =>
+    set({ selectedMetrics: m.selectedMetrics.includes(k) ? m.selectedMetrics.filter((x) => x !== k) : [...m.selectedMetrics, k] });
+  const restore = () => {
+    const patch = {};
+    ADVANCED_KEYS.forEach((k) => (patch[k] = DEFAULT_MODELS[k]));
+    set(patch);
+  };
 
-    const handlePredictionGridFile = async (event) => {
-        const file = event.target.files?.[0];
-        event.target.value = "";
-        if (!file) return;
-        setGridUploading(true);
-        setGridError(null);
-        try {
-            const result = await modelApi.uploadPredictionGrid(file);
-            setPredictionGrid({
-                gridId: result.gridId,
-                fileName: file.name,
-                rows: result.rows,
-                variables: result.variables ?? [],
-            });
-        } catch (err) {
-            setPredictionGrid(null);
-            setGridError(err.message ?? "Falha ao enviar o grid de predição.");
-        } finally {
-            setGridUploading(false);
-        }
-    };
+  const uploadGrid = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setGridBusy(true);
+    setGridError(null);
+    try {
+      const r = await api.uploadPredictionGrid(file);
+      set({ customGrid: { gridId: r.gridId, fileName: file.name, rows: r.rows, variables: r.variables ?? [] } });
+    } catch (e) {
+      setGridError(e.message);
+    } finally {
+      setGridBusy(false);
+    }
+  };
 
-    const handlePresenceType = (value) => {
-        setPresenceType(value);
-        if (value === "presence_only") {
-            setSelectedModels((prev) => prev.filter((m) => m === "maxent"));
-            setKdeTarget((prev) => ({ ...prev, enabled: false }));
-        }
-    };
+  const missing = !envReady
+    ? t("models.need.env")
+    : !models.length
+      ? t("models.need.model")
+      : runnable === 0
+        ? t("models.need.presences", { n: MIN_PRESENCES })
+        : !m.selectedMetrics.length
+          ? t("models.need.metric")
+          : null;
 
-    const toggleKde = (enabled) => {
-        setKdeTarget((prev) => ({ ...prev, enabled }));
-        if (enabled) setSelectedModels((prev) => prev.filter((m) => KDE_MODELS.includes(m)));
-    };
-
-    const handleMetricChange = (event) => {
-        const { name, checked } = event.target;
-        setSelectedMetrics((prev) =>
-            checked ? [...prev, name] : prev.filter((m) => m !== name)
-        );
-    };
-
-    const handleModelChange = (event) => {
-        const { name, checked } = event.target;
-        setSelectedModels((prev) =>
-            checked ? [...prev, name] : prev.filter((m) => m !== name)
-        );
-    };
-
-    const isModelDisabled = (value) => {
-        if (presenceType === "presence_only" && value !== "maxent") return true;
-        if (kdeTarget.enabled && !KDE_MODELS.includes(value)) return true;
-        return false;
-    };
-
-    // Select all models (only enabled ones)
-    const enabledModels = MODELS.filter((m) => !isModelDisabled(m.value)).map((m) => m.value);
-    const allModelsSelected = enabledModels.length > 0 && enabledModels.every((v) => selectedModels.includes(v));
-    const someModelsSelected = enabledModels.some((v) => selectedModels.includes(v)) && !allModelsSelected;
-
-    const handleSelectAllModels = (checked) => {
-        setSelectedModels(checked ? enabledModels : []);
-    };
-
-    // Select all metrics
-    const allMetricValues = METRICS.map((m) => m.value);
-    const allMetricsSelected = allMetricValues.length > 0 && allMetricValues.every((v) => selectedMetrics.includes(v));
-    const someMetricsSelected = allMetricValues.some((v) => selectedMetrics.includes(v)) && !allMetricsSelected;
-
-    const handleSelectAllMetrics = (checked) => {
-        setSelectedMetrics(checked ? allMetricValues : []);
-    };
-
+  if (!envReady) {
     return (
-        <Box>
-            <Box sx={{ mb: 3 }}>
-                <Typography variant="h5" fontWeight={600} gutterBottom>
-                    Modelos
-                </Typography>
-                <Typography variant="body2" sx={{ color: "#333" }}>
-                    Configure o tipo de dado e os modelos a serem utilizados na modelagem de distribuição de espécies.
-                </Typography>
-            </Box>
-
-            {/* Tipo de presença */}
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ color: "#333" }}>
-                Tipo de dado
-            </Typography>
-            <FormGroup sx={{ mb: 3 }}>
-                {PRESENCE_TYPES.map((type) => (
-                    <Box key={type.value} sx={{ display: "flex", alignItems: "center", color: "#555" }}>
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    name={type.value}
-                                    checked={presenceType === type.value}
-                                    onChange={() => handlePresenceType(type.value)}
-                                />
-                            }
-                            label={type.label}
-                        />
-                        <Tooltip title={type.description} placement="right" arrow>
-                            <IconButton size="small" sx={{ color: "#888" }}>
-                                <InfoOutlinedIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
-                ))}
-            </FormGroup>
-
-            {presenceType !== "presence_only" && (
-                <Box sx={{ mb: 2 }}>
-                    <Box sx={{ display: "flex", alignItems: "center" }}>
-                        <FormControlLabel
-                            control={<Checkbox checked={kdeTarget.enabled} onChange={(e) => toggleKde(e.target.checked)} />}
-                            label={
-                                <Typography variant="body2" sx={{ color: "#333" }}>
-                                    Resposta contínua: densidade das ocorrências (KDE) em vez de 1/0 (experimental)
-                                </Typography>
-                            }
-                        />
-                        <Tooltip
-                            title="Em vez de presença = 1 e pseudo-ausência = 0, cada ponto de treino recebe a densidade de kernel das ocorrências (0 a 1). Os modelos viram regressões (GAM, Random Forest e BRT; MaxEnt e SVM não se aplicam). AUC, TSS e Boyce continuam calculados contra a presença 1/0 dos dados de teste. A densidade também reflete onde se coletou mais; prefira a validação espacial."
-                            placement="right"
-                            arrow
-                        >
-                            <IconButton size="small" sx={{ color: "#888" }}>
-                                <InfoOutlinedIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
-                    {kdeTarget.enabled && (
-                        <TextField
-                            label="Largura do kernel (km)"
-                            type="number"
-                            size="small"
-                            value={kdeTarget.bandwidthKm}
-                            onChange={(e) => setKdeTarget((prev) => ({ ...prev, bandwidthKm: Math.max(0, parseFloat(e.target.value) || 0) }))}
-                            inputProps={{ min: 0, step: 5 }}
-                            sx={{ ml: 4, mt: 1, width: 260 }}
-                            helperText="0 = automática (regra de Silverman), calculada por espécie."
-                        />
-                    )}
-                </Box>
-            )}
-
-            <Divider sx={{ my: 2, opacity: 0.6 }} />
-
-            {/* Modelos */}
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ color: "#333" }}>
-                Modelos disponíveis
-            </Typography>
-            {/* Selecionar todos os modelos */}
-            <FormControlLabel
-                sx={{ mb: 0.5 }}
-                control={
-                    <Checkbox
-                        checked={allModelsSelected}
-                        indeterminate={someModelsSelected}
-                        onChange={(e) => handleSelectAllModels(e.target.checked)}
-                        disabled={enabledModels.length === 0}
-                    />
-                }
-                label={
-                    <Typography variant="body2" sx={{ color: "#333", fontWeight: 600 }}>
-                        Selecionar todos
-                    </Typography>
-                }
-            />
-            <FormGroup sx={{ mb: 3 }}>
-                {MODELS.map((model) => (
-                    <Box key={model.value} sx={{ display: "flex", alignItems: "center", color: "#555" }}>
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    name={model.value}
-                                    checked={selectedModels.includes(model.value)}
-                                    onChange={handleModelChange}
-                                    disabled={isModelDisabled(model.value)}
-                                />
-                            }
-                            label={
-                                <Typography
-                                    variant="body2"
-                                    sx={{ color: isModelDisabled(model.value) ? "#aaa" : "#333" }}
-                                >
-                                    {model.label}
-                                </Typography>
-                            }
-                        />
-                        <Tooltip title={model.description} placement="right" arrow>
-                            <IconButton size="small" sx={{ color: "#888" }} disabled={isModelDisabled(model.value)}>
-                                <InfoOutlinedIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
-                ))}
-            </FormGroup>
-
-            {presenceType === "presence_only" && (
-                <Typography variant="body2" sx={{ color: "#888", mb: 2 }}>
-                    * MaxEnt é o único modelo recomendado para dados de presença apenas, devido à sua capacidade de lidar com esse tipo de dado.
-                </Typography>
-            )}
-
-            <Divider sx={{ my: 2, opacity: 0.6 }} />
-
-            {/* Validação */}
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ color: "#333" }}>
-                Validação
-            </Typography>
-            <RadioGroup
-                value={validationMode}
-                onChange={(e) => setValidationMode(e.target.value)}
-                sx={{ mb: 1 }}
-            >
-                {VALIDATION_MODES.map((mode) => (
-                    <Box key={mode.value} sx={{ display: "flex", alignItems: "center", color: "#555" }}>
-                        <FormControlLabel
-                            value={mode.value}
-                            control={<Radio />}
-                            label={
-                                <Typography variant="body2" sx={{ color: "#333" }}>
-                                    {mode.label}
-                                </Typography>
-                            }
-                        />
-                        <Tooltip title={mode.description} placement="right" arrow>
-                            <IconButton size="small" sx={{ color: "#888" }}>
-                                <InfoOutlinedIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
-                ))}
-            </RadioGroup>
-
-            {validationMode === "spatial" && (
-                <TextField
-                    label="Número de folds espaciais"
-                    type="number"
-                    size="small"
-                    value={nFolds}
-                    onChange={(e) => setNFolds(Math.max(2, parseInt(e.target.value, 10) || 10))}
-                    inputProps={{ min: 2, max: 30 }}
-                    sx={{ mb: 2, width: 260 }}
-                    helperText="Grupos geográficos formados por K-means nas coordenadas (padrão: 10)."
-                />
-            )}
-
-            {validationMode === "repeated" && (
-                <TextField
-                    label="Número de repetições"
-                    type="number"
-                    size="small"
-                    value={nRepeats}
-                    onChange={(e) => setNRepeats(Math.max(2, Math.min(50, parseInt(e.target.value, 10) || 5)))}
-                    inputProps={{ min: 2, max: 50 }}
-                    sx={{ mb: 2, width: 260 }}
-                />
-            )}
-
-            <Box sx={{ mb: 2, display: "flex", gap: 2, flexWrap: "wrap" }}>
-                <TextField
-                    label="Buffer de exclusão (km)"
-                    type="number"
-                    size="small"
-                    value={backgroundBufferKm}
-                    onChange={(e) => setBackgroundBufferKm(Math.max(0, parseFloat(e.target.value) || 0))}
-                    inputProps={{ min: 0, step: 1 }}
-                    sx={{ width: 260 }}
-                    helperText="Não sorteia background a menos dessa distância das presenças. 0 = sem buffer."
-                />
-                <TextField
-                    label="Proporção de background"
-                    type="number"
-                    size="small"
-                    value={backgroundRatio}
-                    onChange={(e) => setBackgroundRatio(Math.max(0.1, parseFloat(e.target.value) || 2))}
-                    inputProps={{ min: 0.1, max: 10, step: 0.5 }}
-                    sx={{ width: 260 }}
-                    helperText="Pontos de background por presença (padrão: 2 por presença)."
-                />
-            </Box>
-
-            <Typography variant="body2" sx={{ color: "#555", mb: 0.5 }}>
-                Origem do background
-            </Typography>
-            <RadioGroup
-                value={backgroundSource}
-                onChange={(e) => setBackgroundSource(e.target.value)}
-                sx={{ mb: 1 }}
-            >
-                {BACKGROUND_SOURCES.map((source) => (
-                    <Box key={source.value} sx={{ display: "flex", alignItems: "center", color: "#555" }}>
-                        <FormControlLabel
-                            value={source.value}
-                            control={<Radio />}
-                            label={
-                                <Typography variant="body2" sx={{ color: "#333" }}>
-                                    {source.label}
-                                </Typography>
-                            }
-                        />
-                        <Tooltip title={source.description} placement="right" arrow>
-                            <IconButton size="small" sx={{ color: "#888" }}>
-                                <InfoOutlinedIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
-                ))}
-            </RadioGroup>
-            {backgroundSource === "provided" && !hasEnvSpreadsheet && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                    Nenhuma planilha ambiental foi enviada na etapa de Ambiente. Sem ela, o sistema
-                    vai usar o grid gerado automaticamente mesmo com essa opção selecionada.
-                </Alert>
-            )}
-            {backgroundSource === "provided" && (
-                <Alert severity="info" sx={{ mb: 2 }}>
-                    Se a planilha de ocorrências tiver a coluna de presença mapeada (1 = presença,
-                    0 = background), as linhas com 0 são usadas como background exatamente como vieram
-                    e a proporção acima é ignorada.
-                </Alert>
-            )}
-
-            <Divider sx={{ my: 2, opacity: 0.6 }} />
-
-            {/* Grid de predição */}
-            <Box sx={{ display: "flex", alignItems: "center" }}>
-                <Typography variant="subtitle1" fontWeight={600} sx={{ color: "#333" }}>
-                    Grid de predição para o mapa (opcional)
-                </Typography>
-                <Tooltip
-                    title="Grid regular cobrindo toda a área (ex.: uma célula a cada 0,1°), com as MESMAS variáveis e nomes de coluna usados no treino. O modelo é treinado com as ocorrências e o background e depois aplicado em cada célula deste grid para desenhar o mapa. Sem ele, o mapa é interpolado a partir dos pontos da planilha ambiental."
-                    placement="right"
-                    arrow
-                >
-                    <IconButton size="small" sx={{ color: "#888" }}>
-                        <InfoOutlinedIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, mt: 1 }}>
-                <Button variant="outlined" component="label" disabled={gridUploading}>
-                    {predictionGrid ? "Trocar grid de predição" : "Selecionar grid de predição (CSV)"}
-                    <input hidden type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" onChange={handlePredictionGridFile} />
-                </Button>
-                {gridUploading && <CircularProgress size={20} />}
-                {predictionGrid && !gridUploading && (
-                    <Button size="small" color="inherit" onClick={() => setPredictionGrid(null)}>
-                        Remover
-                    </Button>
-                )}
-            </Box>
-            {gridError && <Alert severity="error" sx={{ mb: 2 }}>{gridError}</Alert>}
-            {usesRasters && !predictionGrid && (
-                <Alert severity="info" sx={{ mb: 2 }}>
-                    Como as variáveis vêm de rasters, o grid do mapa (e do background) será montado
-                    automaticamente a partir deles, na resolução de {rasterEnv.resolution}°. Só envie um grid
-                    aqui se quiser usar outro.
-                </Alert>
-            )}
-            {predictionGrid && (
-                <Alert severity="success" sx={{ mb: 2 }}>
-                    {predictionGrid.fileName}: {predictionGrid.rows.toLocaleString("pt-BR")} células,
-                    variáveis {predictionGrid.variables.join(", ")}. O mapa será gerado neste grid.
-                </Alert>
-            )}
-
-            <Divider sx={{ my: 2, opacity: 0.6 }} />
-
-            {/* Ensemble */}
-            <Box sx={{ display: "flex", alignItems: "center" }}>
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            checked={ensemble.enabled && ensembleAvailable}
-                            disabled={!ensembleAvailable}
-                            onChange={(e) => updateEnsemble({ enabled: e.target.checked })}
-                        />
-                    }
-                    label={
-                        <Typography variant="subtitle1" fontWeight={600} sx={{ color: "#333" }}>
-                            Gerar ensemble (média ponderada)
-                        </Typography>
-                    }
-                />
-                <Tooltip
-                    title="Combina os modelos selecionados numa média ponderada, como o EMwmean do biomod2. Entram só os modelos com a métrica escolhida acima do mínimo, e cada um pesa proporcionalmente a essa métrica. O ensemble é avaliado nos mesmos dados de teste dos modelos individuais e aparece numa aba própria no resultado."
-                    placement="right"
-                    arrow
-                >
-                    <IconButton size="small" sx={{ color: "#888" }}>
-                        <InfoOutlinedIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
-            </Box>
-            {!ensembleAvailable && (
-                <Typography variant="body2" sx={{ color: "#888", mb: 1 }}>
-                    Selecione pelo menos 2 modelos (com dados de presença/ausência) para gerar o ensemble.
-                </Typography>
-            )}
-            {ensemble.enabled && ensembleAvailable && (
-                <Box sx={{ display: "flex", gap: 3, alignItems: "flex-start", mb: 2, ml: 4, flexWrap: "wrap" }}>
-                    <Box>
-                        <Typography variant="body2" sx={{ color: "#555" }}>Peso dos modelos</Typography>
-                        <RadioGroup
-                            row
-                            value={ensemble.metric}
-                            onChange={(e) => updateEnsemble({ metric: e.target.value })}
-                        >
-                            <FormControlLabel value="tss" control={<Radio size="small" />} label={<Typography variant="body2" sx={{ color: "#333" }}>TSS</Typography>} />
-                            <FormControlLabel value="auc" control={<Radio size="small" />} label={<Typography variant="body2" sx={{ color: "#333" }}>AUC</Typography>} />
-                        </RadioGroup>
-                    </Box>
-                    <TextField
-                        label={`${ensemble.metric.toUpperCase()} mínimo para entrar`}
-                        type="number"
-                        size="small"
-                        value={ensemble.threshold}
-                        onChange={(e) => updateEnsemble({ threshold: Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)) })}
-                        inputProps={{ min: 0, max: 1, step: 0.05 }}
-                        helperText="Zhao et al. (2025) usou TSS > 0,7 e Santos et al. (2022) TSS > 0,8. Use 0 para incluir todos."
-                        sx={{ width: 260 }}
-                    />
-                </Box>
-            )}
-
-            <Divider sx={{ my: 2, opacity: 0.6 }} />
-
-            {/* Métricas */}
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ color: "#333" }}>
-                Métricas de avaliação
-            </Typography>
-            {/* Selecionar todas as métricas */}
-            <FormControlLabel
-                sx={{ mb: 0.5 }}
-                control={
-                    <Checkbox
-                        checked={allMetricsSelected}
-                        indeterminate={someMetricsSelected}
-                        onChange={(e) => handleSelectAllMetrics(e.target.checked)}
-                    />
-                }
-                label={
-                    <Typography variant="body2" sx={{ color: "#333", fontWeight: 600 }}>
-                        Selecionar todas
-                    </Typography>
-                }
-            />
-            <FormGroup sx={{ mb: 3 }}>
-                {METRICS.map((metric) => (
-                    <Box key={metric.value} sx={{ display: "flex", alignItems: "center", color: "#555" }}>
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    name={metric.value}
-                                    checked={selectedMetrics.includes(metric.value)}
-                                    onChange={handleMetricChange}
-                                />
-                            }
-                            label={
-                                <Typography variant="body2" sx={{ color: "#333" }}>
-                                    {metric.label}
-                                </Typography>
-                            }
-                        />
-                        <Tooltip title={metric.description} placement="right" arrow>
-                            <IconButton size="small" sx={{ color: "#888" }}>
-                                <InfoOutlinedIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                    </Box>
-                ))}
-            </FormGroup>
-
-            {selectedMetrics.includes("tss") && (
-                <Box sx={{ mb: 3 }}>
-                    <Typography variant="body2" sx={{ color: "#555" }}>Limiar do TSS</Typography>
-                    <RadioGroup row value={tssMode} onChange={(e) => setTssMode(e.target.value)}>
-                        <FormControlLabel value="max" control={<Radio size="small" />} label={<Typography variant="body2" sx={{ color: "#333" }}>Ótimo (máximo TSS, como no biomod2)</Typography>} />
-                        <FormControlLabel value="0.5" control={<Radio size="small" />} label={<Typography variant="body2" sx={{ color: "#333" }}>Fixo em 0,5</Typography>} />
-                    </RadioGroup>
-                </Box>
-            )}
-
-            <StepActions
-                selectedSpecies={selectedSpecies}
-                disableNext={selectedModels.length === 0}
-                disableHint="Selecione ao menos um modelo para prosseguir."
-            />
-        </Box>
+      <Box>
+        <PageHeader step={t("common.stepOf", { n: 3, total: 4 })} title={t("models.title")} subtitle={t("models.subtitle")} />
+        <Alert severity="info" action={<Button color="inherit" onClick={() => navigate("/environment")}>{t("models.goEnv")}</Button>}>
+          {t("models.need.env")}
+        </Alert>
+      </Box>
     );
+  }
+
+  const field = (label, help, input) => (
+    <Box>
+      <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
+        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          {label}
+        </Typography>
+        <InfoTip text={help} />
+      </Box>
+      {input}
+    </Box>
+  );
+
+  return (
+    <Box>
+      <PageHeader step={t("common.stepOf", { n: 3, total: 4 })} title={t("models.title")} subtitle={t("models.subtitle")} />
+
+      {/* ── o que vai rodar ─────────────────────────────────────────────── */}
+      <Section title={t("models.planTitle")} subtitle={t("models.planSubtitle")}>
+        <Box sx={{ maxHeight: 300, overflow: "auto", mb: 2 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell>{t("occ.table.species")}</TableCell>
+                <TableCell align="right">{t("models.plan.presences")}</TableCell>
+                {isPA && <TableCell align="right">{t("models.plan.background")}</TableCell>}
+                <TableCell>{t("models.plan.status")}</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {summary.species.map((s) => (
+                <TableRow key={s.name}>
+                  <TableCell sx={{ fontStyle: "italic" }}>{s.name}</TableCell>
+                  <TableCell align="right">{nf.format(s.unique)}</TableCell>
+                  {isPA && (
+                    <TableCell align="right">
+                      {summary.backgroundRows > 0 ? t("models.plan.provided") : `≈ ${nf.format(Math.round(s.unique * m.backgroundRatio))}`}
+                    </TableCell>
+                  )}
+                  <TableCell>
+                    {s.unique < MIN_PRESENCES ? (
+                      <Chip size="small" color="error" variant="outlined" label={t("models.plan.skip")} />
+                    ) : s.unique < FEW_PRESENCES ? (
+                      <Chip size="small" color="warning" variant="outlined" label={t("models.plan.few")} />
+                    ) : (
+                      <Chip size="small" color="success" variant="outlined" label={t("models.plan.ok")} />
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+        <Typography variant="body2" sx={{ color: "text.secondary" }}>
+          {t("models.plan.variables", { n: env.variables.length })}{" "}
+          <Box component="span" sx={{ fontFamily: "monospace", fontSize: 13 }}>
+            {env.variables.slice(0, 12).join(", ")}
+            {env.variables.length > 12 ? "…" : ""}
+          </Box>
+        </Typography>
+        {blocked.length > 0 && runnable > 0 && (
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            {t("models.plan.skipped", { n: MIN_PRESENCES, list: blocked.map((s) => s.name).join(", ") })}
+          </Alert>
+        )}
+      </Section>
+
+      {/* ── modelos ─────────────────────────────────────────────────────── */}
+      <Section title={t("models.algoTitle")} subtitle={t("models.algoSubtitle")}>
+        <Box sx={{ display: "grid", gap: 1.5, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" } }}>
+          {MODEL_KEYS.map((k) => {
+            const allowed = modelAllowed(k, m);
+            const on = allowed && m.selectedModels.includes(k);
+            return (
+              <Box
+                key={k}
+                onClick={() => allowed && toggleModel(k)}
+                sx={{
+                  display: "flex",
+                  gap: 1,
+                  alignItems: "flex-start",
+                  p: 1.5,
+                  border: "1.5px solid",
+                  borderColor: on ? "secondary.main" : BRAND.border,
+                  borderRadius: 2,
+                  cursor: allowed ? "pointer" : "not-allowed",
+                  opacity: allowed ? 1 : 0.5,
+                  bgcolor: "background.paper",
+                }}
+              >
+                <Checkbox checked={on} disabled={!allowed} sx={{ p: 0.5 }} inputProps={{ "aria-label": MODEL_LABELS[k] }} />
+                <Box>
+                  <Typography variant="subtitle1" sx={{ lineHeight: 1.3 }}>
+                    {MODEL_LABELS[k]}
+                    {DEFAULT_MODELS.selectedModels.includes(k) && (
+                      <Chip size="small" label={t("models.recommended")} sx={{ ml: 1, height: 20, fontSize: 11 }} />
+                    )}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                    {allowed ? t(`models.desc.${k}`) : t(m.presenceType === "presence_only" ? "models.onlyMaxent" : "models.notKde")}
+                  </Typography>
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+
+        <Box sx={{ mt: 2.5, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={ensembleAvailable && m.ensemble.enabled}
+                disabled={!ensembleAvailable}
+                onChange={(e) => set({ ensemble: { ...m.ensemble, enabled: e.target.checked } })}
+              />
+            }
+            label={<Typography variant="body1">{t("models.ensemble")}</Typography>}
+          />
+          <Typography variant="body2" sx={{ color: "text.secondary", flex: 1, minWidth: 260 }}>
+            {ensembleAvailable ? t("models.ensembleHelp") : t("models.ensembleNeeds")}
+          </Typography>
+        </Box>
+
+        <Box sx={{ mt: 2.5, maxWidth: 520 }}>
+          {field(
+            t("models.testSize", { n: m.testSize }),
+            t("models.testSizeHelp"),
+            <Box sx={{ px: 1 }}>
+              <Slider
+                value={m.testSize}
+                min={10}
+                max={50}
+                step={5}
+                marks={[{ value: 10, label: "10%" }, { value: 20, label: "20%" }, { value: 30, label: "30%" }, { value: 50, label: "50%" }]}
+                valueLabelDisplay="auto"
+                valueLabelFormat={(v) => `${v}%`}
+                onChange={(_e, v) => set({ testSize: v })}
+                disabled={m.validationMode === "spatial"}
+              />
+            </Box>
+          )}
+          {m.validationMode === "spatial" && (
+            <Typography variant="caption" sx={{ color: "text.secondary" }}>
+              {t("models.testSizeSpatial")}
+            </Typography>
+          )}
+        </Box>
+      </Section>
+
+      {/* ── avançado ────────────────────────────────────────────────────── */}
+      <Accordion disableGutters variant="outlined" sx={{ borderColor: BRAND.border, borderRadius: 2, "&:before": { display: "none" }, mb: 2.5 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+            <Typography variant="h6">{t("models.advanced")}</Typography>
+            {changed.length > 0 ? (
+              <Chip size="small" color="primary" label={t("models.changed", { n: changed.length })} />
+            ) : (
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                {t("models.advancedHint")}
+              </Typography>
+            )}
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails sx={{ px: { xs: 2, md: 3 }, pb: 3 }}>
+          {changed.length > 0 && (
+            <Button size="small" startIcon={<RestartAltIcon />} onClick={restore} sx={{ mb: 2 }}>
+              {t("models.restore")}
+            </Button>
+          )}
+          <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" } }}>
+            {field(
+              t("models.adv.presenceType"),
+              t("models.adv.presenceTypeHelp"),
+              <FormControl size="small" fullWidth>
+                <Select value={m.presenceType} onChange={(e) => setPresenceType(e.target.value)}>
+                  <MenuItem value="presence_pseudoabsence">{t("models.presence.pa")}</MenuItem>
+                  <MenuItem value="presence_only">{t("models.presence.po")}</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+
+            {field(
+              t("models.adv.metrics"),
+              t("models.adv.metricsHelp"),
+              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                {METRIC_KEYS.map((k) => (
+                  <Chip
+                    key={k}
+                    label={METRIC_LABELS[k]}
+                    title={t(`metrics.desc.${k}`)}
+                    color={m.selectedMetrics.includes(k) ? "secondary" : "default"}
+                    variant={m.selectedMetrics.includes(k) ? "filled" : "outlined"}
+                    onClick={() => toggleMetric(k)}
+                  />
+                ))}
+              </Box>
+            )}
+
+            {field(
+              t("models.adv.validation"),
+              t(`models.validation.${m.validationMode}Help`),
+              <FormControl size="small" fullWidth>
+                <Select value={m.validationMode} onChange={(e) => set({ validationMode: e.target.value })}>
+                  {["random", "repeated", "spatial"].map((v) => (
+                    <MenuItem key={v} value={v}>
+                      {t(`models.validation.${v}`)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+
+            {m.validationMode === "spatial" &&
+              field(
+                t("models.adv.nFolds"),
+                t("models.adv.nFoldsHelp"),
+                <TextField size="small" type="number" value={m.nFolds} inputProps={{ min: 2, max: 20 }} onChange={(e) => set({ nFolds: Math.max(2, parseInt(e.target.value, 10) || 2) })} />
+              )}
+            {m.validationMode === "repeated" &&
+              field(
+                t("models.adv.nRepeats"),
+                t("models.adv.nRepeatsHelp"),
+                <TextField size="small" type="number" value={m.nRepeats} inputProps={{ min: 2, max: 50 }} onChange={(e) => set({ nRepeats: Math.max(2, parseInt(e.target.value, 10) || 2) })} />
+              )}
+
+            {isPA &&
+              field(
+                t("models.adv.ratio"),
+                t("models.adv.ratioHelp"),
+                <TextField size="small" type="number" value={m.backgroundRatio} inputProps={{ min: 0.1, max: 10, step: 0.5 }} onChange={(e) => set({ backgroundRatio: Math.max(0.1, parseFloat(e.target.value) || 2) })} />
+              )}
+            {isPA &&
+              field(
+                t("models.adv.buffer"),
+                t("models.adv.bufferHelp"),
+                <TextField size="small" type="number" value={m.backgroundBufferKm} inputProps={{ min: 0, step: 5 }} onChange={(e) => set({ backgroundBufferKm: Math.max(0, parseFloat(e.target.value) || 0) })} />
+              )}
+            {isPA &&
+              field(
+                t("models.adv.bgSource"),
+                t("models.adv.bgSourceHelp"),
+                <FormControl size="small" fullWidth>
+                  <Select value={m.backgroundSource} onChange={(e) => set({ backgroundSource: e.target.value })}>
+                    <MenuItem value="grid_random">{t("models.bg.grid_random")}</MenuItem>
+                    <MenuItem value="provided">{t("models.bg.provided")}</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
+
+            {field(
+              t("models.adv.tss"),
+              t("models.adv.tssHelp"),
+              <FormControl size="small" fullWidth>
+                <Select value={m.tssMode} onChange={(e) => set({ tssMode: e.target.value })}>
+                  <MenuItem value="max">{t("models.tss.max")}</MenuItem>
+                  <MenuItem value="0.5">{t("models.tss.fixed")}</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+
+            {ensembleAvailable &&
+              m.ensemble.enabled &&
+              field(
+                t("models.adv.ensembleMetric"),
+                t("models.adv.ensembleMetricHelp"),
+                <Box sx={{ display: "flex", gap: 1.5 }}>
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <InputLabel>{t("models.adv.weight")}</InputLabel>
+                    <Select value={m.ensemble.metric} label={t("models.adv.weight")} onChange={(e) => set({ ensemble: { ...m.ensemble, metric: e.target.value } })}>
+                      <MenuItem value="tss">TSS</MenuItem>
+                      <MenuItem value="auc">AUC</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    size="small"
+                    type="number"
+                    label={t("models.adv.threshold")}
+                    value={m.ensemble.threshold}
+                    inputProps={{ min: 0, max: 1, step: 0.05 }}
+                    onChange={(e) => set({ ensemble: { ...m.ensemble, threshold: Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)) } })}
+                    sx={{ width: 150 }}
+                  />
+                </Box>
+              )}
+
+            {isPA &&
+              field(
+                t("models.adv.kde"),
+                t("models.adv.kdeHelp"),
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={!!m.kdeTarget?.enabled}
+                        onChange={(e) => set({ kdeTarget: { bandwidthKm: 0, ...m.kdeTarget, enabled: e.target.checked } })}
+                      />
+                    }
+                    label={<Typography variant="body2">{t("models.adv.kdeOn")}</Typography>}
+                  />
+                  {m.kdeTarget?.enabled && (
+                    <TextField
+                      size="small"
+                      type="number"
+                      label={t("models.adv.bandwidth")}
+                      value={m.kdeTarget.bandwidthKm ?? 0}
+                      onChange={(e) => set({ kdeTarget: { ...m.kdeTarget, bandwidthKm: Math.max(0, parseFloat(e.target.value) || 0) } })}
+                      helperText={t("models.adv.bandwidthHelp")}
+                      sx={{ width: 200 }}
+                    />
+                  )}
+                </Box>
+              )}
+
+            <Box sx={{ gridColumn: "1 / -1" }}>
+              {field(
+                t("models.adv.grid"),
+                t("models.adv.gridHelp"),
+                <Box>
+                  <Box sx={{ display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
+                    <Button variant="outlined" component="label" startIcon={<UploadFileIcon />} disabled={gridBusy}>
+                      {m.customGrid ? t("models.adv.gridChange") : t("models.adv.gridChoose")}
+                      <input type="file" accept=".csv,.tsv,.txt" hidden onChange={uploadGrid} />
+                    </Button>
+                    {m.customGrid && (
+                      <>
+                        <Typography variant="body2">
+                          {t("models.adv.gridInfo", { file: m.customGrid.fileName, rows: nf.format(m.customGrid.rows ?? 0) })}
+                        </Typography>
+                        <Button size="small" color="inherit" onClick={() => set({ customGrid: null })}>
+                          {t("models.adv.gridRemove")}
+                        </Button>
+                      </>
+                    )}
+                  </Box>
+                  {!m.customGrid && env.rasterGrid && (
+                    <Typography variant="caption" sx={{ color: "text.secondary", display: "block", mt: 1 }}>
+                      {t("models.adv.gridFromRasters", { res: env.rasterGrid.resolution })}
+                    </Typography>
+                  )}
+                  {gridError && (
+                    <Alert severity="error" sx={{ mt: 1 }}>
+                      {gridError}
+                    </Alert>
+                  )}
+                </Box>
+              )}
+            </Box>
+          </Box>
+        </AccordionDetails>
+      </Accordion>
+
+      <StepFooter
+        onBack={() => navigate("/environment")}
+        onNext={() => navigate("/results")}
+        nextLabel={t("models.run")}
+        nextIcon={<PlayArrowIcon />}
+        nextDisabled={!!missing}
+        reason={missing}
+      />
+    </Box>
+  );
 }

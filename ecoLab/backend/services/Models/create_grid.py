@@ -52,19 +52,16 @@ def _capped_resolution(
     return capped
 
 
-@lru_cache(maxsize=None)
 def _load_world_shapefile():
-    URL = "https://naturalearth.s3.amazonaws.com/110m_cultural/ne_110m_admin_0_countries.zip"
-    return gpd.read_file(URL)
+    # Contornos embutidos no app (antes eram baixados da internet a cada uso).
+    from .. import world as _world
+
+    return _world.load_world()
 
 def get_country_grid(country_name: str, resolution_deg: float = RESOLUTION_DEG) -> gpd.GeoDataFrame:
-    country_code = pycountry.countries.search_fuzzy(country_name)[0].alpha_3
-    world = _load_world_shapefile() 
+    from .. import world as _world
 
-    country_code = pycountry.countries.search_fuzzy(country_name)
-    country_code = country_code[0].alpha_3
-
-    country = world[world["ISO_A3"] == country_code]
+    country = _world.country_shape(country_name)
     if country.empty:
         raise ValueError(f"País '{country_name}' não encontrado.")
     
@@ -85,6 +82,9 @@ def get_country_grid(country_name: str, resolution_deg: float = RESOLUTION_DEG) 
     
     grid_gdf["latitude"] = grid_gdf.geometry.y
     grid_gdf["longitude"] = grid_gdf.geometry.x
+    # O STRtree devolve os pontos agrupados em blocos espaciais; ordenar deixa
+    # o grid sempre igual e os lotes do Earth Engine em faixas de latitude.
+    grid_gdf = grid_gdf.sort_values(["latitude", "longitude"]).reset_index(drop=True)
     print(f"Grid gerado com {len(grid_gdf)} pontos.")
     return grid_gdf
 

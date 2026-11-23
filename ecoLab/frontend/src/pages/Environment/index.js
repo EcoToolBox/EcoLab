@@ -1,406 +1,365 @@
+import { useEffect, useMemo, useState } from "react";
 import {
-  Box, Typography, Checkbox, FormControlLabel, FormGroup,
-  Button, Alert, TextField, CircularProgress, Radio, RadioGroup,
+  Alert, Box, Button, Checkbox, Chip, CircularProgress, FormControlLabel, Table, TableBody, TableCell, TableHead,
+  TableRow, TextField, Typography,
 } from "@mui/material";
-import { useEffect, useState } from "react";
-import StepActions from "../../components/StepActions";
-import environmentApi from "../../services/environmentApi";
+import LayersIcon from "@mui/icons-material/Layers";
+import SatelliteAltIcon from "@mui/icons-material/SatelliteAlt";
+import TableChartIcon from "@mui/icons-material/TableChart";
+import MergeTypeIcon from "@mui/icons-material/MergeType";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import { useNavigate } from "react-router-dom";
+import { useI18n } from "../../i18n";
+import { useAnalysis, stamp } from "../../state/AnalysisContext";
+import { PageHeader, Section, OptionCards, StepFooter, ProgressPanel, DataTable, Stat } from "../../components/ui";
+import SpreadsheetPicker from "../../components/SpreadsheetPicker";
+import RasterPicker, { effectiveResolution } from "./RasterPicker";
+import Interactions from "./Interactions";
+import api from "../../services/api";
+import { ENV_FIELD_ALIASES, addedColumns, analysisSpecies, asRows, rasterExtent, selectedRows, variableStats, withId } from "../../utils/data";
 
-const ENV_VARS = [
-  { name: "ndvi",          label: "NDVI (Índice de Vegetação por Diferença Normalizada)" },
-  { name: "ndwi",          label: "NDWI (Índice de Água por Diferença Normalizada)" },
-  { name: "temperature",   label: "Temperatura" },
-  { name: "precipitation", label: "Precipitação" },
-];
-const GEE_VARS = ["ndvi", "ndwi", "temperature", "precipitation"];
-const GEE_PROJECT_CACHE_KEY = "geeProject";
+export const GEE_VARS = ["ndvi", "ndwi", "temperature", "precipitation"];
 
-export default function Environment({
-  selectedSpecies,
-  selectedEnv,
-  setSelectedEnv,
-  geeProject,
-  setGeeProject,
-  environmentMode,
-  setEnvironmentMode,
-  envUpload,
-  setEnvUpload,
-  rasterEnv,
-  setRasterEnv,
-}) {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [authLoading,   setAuthLoading]   = useState(false);
-  const [authError,     setAuthError]     = useState(null);
-  const [rasterScanning, setRasterScanning] = useState(false);
-  const [rasterErrors,   setRasterErrors]   = useState([]);
+export default function Environment() {
+  const { t, lang } = useI18n();
+  const navigate = useNavigate();
+  const { state, update, files, envHash, occReady, envReady, envStale } = useAnalysis();
+  const { env, occ } = state;
+  const [phase, setPhase] = useState(null);
+  const [error, setError] = useState(null);
+  const [gee, setGee] = useState({ checked: false, ok: false, busy: false, error: null });
 
-  const [pickingFolder, setPickingFolder] = useState(false);
+  const set = (patch) => update("env", patch);
+  const usesGee = env.mode === "sources" || env.mode === "both";
+  const usesUpload = env.mode === "upload" || env.mode === "both";
+  const usesRasters = env.mode === "rasters";
 
-  const scanRasterFolder = async (folderArg) => {
-    const folder = typeof folderArg === "string" ? folderArg : rasterEnv.folder;
-    setRasterScanning(true);
-    setRasterErrors([]);
+  useEffect(() => {
+    if (!usesGee || gee.checked) return;
+    api
+      .checkEarthEngine()
+      .then((r) => setGee((g) => ({ ...g, checked: true, ok: r === true || r?.success === true })))
+      .catch(() => setGee((g) => ({ ...g, checked: true, ok: false })));
+  }, [usesGee, gee.checked]);
+
+  const connectGee = async () => {
+    setGee((g) => ({ ...g, busy: true, error: null }));
     try {
-      const result = await environmentApi.scanRasters(folder);
-      const available = result.files ?? [];
-      setRasterEnv((prev) => ({
-        ...prev,
-        folder: result.folder ?? prev.folder,
-        available,
-        files: available.map((f) => f.relativePath),
-      }));
-      setRasterErrors(result.errors ?? []);
-    } catch (err) {
-      setRasterEnv((prev) => ({ ...prev, available: [], files: [] }));
-      setRasterErrors([err.message ?? "Não foi possível ler a pasta."]);
-    } finally {
-      setRasterScanning(false);
+      await api.authenticateEarthEngine(env.geeProject.trim());
+      setGee((g) => ({ ...g, ok: true, busy: false }));
+    } catch (e) {
+      setGee((g) => ({ ...g, ok: false, busy: false, error: e.message }));
     }
   };
 
-  // Abre o Explorer (janela nativa) e já lê a pasta escolhida.
-  const pickRasterFolder = async () => {
-    setPickingFolder(true);
-    setRasterErrors([]);
+  // Variáveis da planilha: todas as colunas que não são lat/lon.
+  const setEnvUpload = (patch) => {
+    const next = { ...env.upload, ...patch };
+    const used = new Set([next.mapping?.latitude, next.mapping?.longitude].filter(Boolean));
+    const prev = new Map((env.upload.variables ?? []).map((v) => [v.column, v]));
+    next.variables = (next.columns ?? [])
+      .filter((c) => !used.has(c))
+      .map((c) => prev.get(c) ?? { column: c, name: c, selected: true });
+    set({ upload: next });
+  };
+  const toggleVar = (column) =>
+    set({ upload: { ...env.upload, variables: env.upload.variables.map((v) => (v.column === column ? { ...v, selected: !v.selected } : v)) } });
+
+  // ── o que falta ────────────────────────────────────────────────────────────
+  const missing = (() => {
+    if (!occReady) return t("env.need.occ");
+    if (usesGee) {
+      if (!env.vars.length) return t("env.need.vars");
+      if (!gee.ok) return t("env.need.gee");
+    }
+    if (usesUpload) {
+      if (!env.upload.fileName || !files.current.envUpload) return t("env.need.file");
+      if (!env.upload.mapping?.latitude || !env.upload.mapping?.longitude) return t("env.need.columns");
+      if (!env.upload.variables.some((v) => v.selected)) return t("env.need.uploadVars");
+      if (!env.upload.acknowledged) return t("env.need.ack");
+    }
+    if (usesRasters) {
+      if (!env.raster.folder || !env.raster.available.length) return t("env.need.folder");
+      if (!env.raster.files.length) return t("env.need.rasters");
+      if (!rasterExtent(env.raster.available, env.raster.files)) return t("env.raster.noOverlap");
+    }
+    if (env.interactions.enabled && !env.interactions.types.length) return t("env.need.interTypes");
+    return null;
+  })();
+
+  // ── leitura das variáveis ──────────────────────────────────────────────────
+  const run = async () => {
+    setError(null);
+    const species = analysisSpecies(occ);
     try {
-      const { folder } = await environmentApi.pickFolder(rasterEnv.folder);
-      if (folder) {
-        setRasterEnv((prev) => ({ ...prev, folder }));
-        await scanRasterFolder(folder);
+      let interactionData = [];
+      if (env.interactions.enabled) {
+        setPhase("interactions");
+        interactionData = withId(
+          asRows(await api.searchInteractions({ species, interaction_type: env.interactions.types, depth: env.interactions.depth }))
+        );
       }
-    } catch (err) {
-      setRasterErrors([err.message ?? "Não foi possível abrir a janela de seleção de pasta."]);
+
+      // Só as espécies marcadas na etapa Ocorrências (evita consultar milhares de pontos à toa).
+      const baseRows = selectedRows(occ, occ.data);
+      let rows = baseRows;
+      let gridData = [];
+      let rasterGrid = null;
+
+      if (usesGee) {
+        setPhase("environment");
+        rows = withId(asRows(await api.environmentVariables({ data: rows, index: env.vars, geeProject: env.geeProject })));
+      }
+
+      if (usesUpload) {
+        setPhase("grid");
+        const vars = env.upload.variables.filter((v) => v.selected).map((v) => ({ column: v.column, name: v.name.trim() || v.column }));
+        const res = await api.uploadEnvironment(files.current.envUpload, env.upload.mapping, vars);
+        if (res?.success === false || !res?.data?.length) throw new Error((res?.errors ?? []).join(" ") || t("env.err.upload"));
+        gridData = res.data;
+        rows = withId(asRows(await api.attachGrid(rows, gridData)));
+      }
+
+      if (usesRasters) {
+        setPhase("rasters");
+        rows = withId(asRows(await api.sampleRasters(env.raster.folder, env.raster.files, rows)));
+        const resolution = effectiveResolution(env.raster);
+        const g = await api.buildRasterGrid(env.raster.folder, env.raster.files, resolution);
+        rasterGrid = { gridId: g.gridId, rows: g.rows, variables: g.variables ?? [], resolution };
+      }
+
+      if (env.interactions.enabled) {
+        setPhase("joining");
+        rows = withId(
+          asRows(
+            await api.interactionsAtOccurrences({
+              occurrence: rows,
+              interactions: interactionData,
+              selectedSpecies: species,
+              selectedSources: occ.mode === "upload" ? [] : occ.sources,
+            })
+          )
+        );
+      }
+
+      const variables = addedColumns(baseRows, rows);
+      set({ finalData: rows, gridData, interactionData, rasterGrid, variables, fetchedHash: stamp(envHash) });
+    } catch (e) {
+      setError(e.message || String(e));
     } finally {
-      setPickingFolder(false);
+      setPhase(null);
     }
   };
 
-  const toggleRaster = (relativePath, checked) => {
-    setRasterEnv((prev) => ({
-      ...prev,
-      files: checked ? [...prev.files, relativePath] : prev.files.filter((f) => f !== relativePath),
-    }));
+  const stats = useMemo(() => variableStats(env.finalData, env.variables), [env.finalData, env.variables]);
+  const badVars = stats.filter((s) => s.missingPct >= 50);
+  const nf = new Intl.NumberFormat(lang === "pt" ? "pt-BR" : "en-US", { maximumFractionDigits: 3 });
+
+  let n = 0;
+  const num = () => {
+    n += 1;
+    return `${n}. `;
   };
 
-  const handleFileSelect = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setEnvUpload({
-      file,
-      fileName: file.name,
-      columns: [],
-      mapping: { latitude: "", longitude: "" },
-      variables: [],
-      acknowledged: false,
-    });
-  };
-
-  useEffect(() => {
-    const cached = localStorage.getItem(GEE_PROJECT_CACHE_KEY);
-    if (cached && !geeProject) setGeeProject(cached);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    environmentApi
-      .checkEEKey()
-      .then((result) => setAuthenticated(result === true || result?.success === true))
-      .catch(() => setAuthenticated(false));
-  }, []);
-
-  const authenticate = (project) => {
-    setAuthLoading(true);
-    setAuthError(null);
-    environmentApi
-      .authenticateEE(project)
-      .then((result) => {
-        if (!result?.success) {
-          throw new Error(result?.message ?? "Não foi possível autenticar no Earth Engine.");
-        }
-        setAuthenticated(true);
-        localStorage.setItem(GEE_PROJECT_CACHE_KEY, project);
-      })
-      .catch((err) => {
-        setAuthenticated(false);
-        setAuthError(err?.message ?? "Erro ao autenticar. Verifique o nome do projeto.");
-      })
-      .finally(() => setAuthLoading(false));
-  };
-
-  const handleChange = (event) => {
-    const { name, checked } = event.target;
-    setSelectedEnv((prev) =>
-      checked ? [...prev, name] : prev.filter((item) => item !== name)
+  if (!occReady) {
+    return (
+      <Box>
+        <PageHeader step={t("common.stepOf", { n: 2, total: 4 })} title={t("env.title")} subtitle={t("env.subtitle")} />
+        <Alert severity="info" action={<Button color="inherit" onClick={() => navigate("/occurrences")}>{t("env.goOcc")}</Button>}>
+          {t("env.need.occ")}
+        </Alert>
+      </Box>
     );
-  };
-
-  const handleProjectChange = (e) => {
-    setGeeProject(e.target.value);
-    setAuthError(null);
-  };
-
-  // Select all
-  const allVarNames = ENV_VARS.map((v) => v.name);
-  const allSelected = allVarNames.every((v) => selectedEnv.includes(v));
-  const someSelected = allVarNames.some((v) => selectedEnv.includes(v)) && !allSelected;
-
-  const handleSelectAll = (checked) => {
-    setSelectedEnv(checked ? [...allVarNames] : []);
-  };
-
-  const usesSources = environmentMode === "sources" || environmentMode === "both";
-  const usesUpload  = environmentMode === "upload" || environmentMode === "both";
-  const usesRasters = environmentMode === "rasters";
-
-  const needsEE    = usesSources && selectedEnv.some((e) => GEE_VARS.includes(e));
-  const hasSelection = selectedEnv.length > 0;
-  const sourcesReady = !usesSources || (hasSelection && (!needsEE || authenticated));
-  const uploadReady  = !usesUpload || (!!envUpload.file && !!envUpload.acknowledged);
-  const rastersReady = !usesRasters || (rasterEnv?.files?.length ?? 0) > 0;
-  const canProceed = sourcesReady && uploadReady && rastersReady;
+  }
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight={600} gutterBottom>
-        Variáveis Ambientais
-      </Typography>
-      <Typography variant="body2" sx={{ color: "#333", mb: 2 }}>
-        Selecione as variáveis ambientais a serem incluídas na análise.
-        A busca será executada automaticamente na etapa de coleta de dados.
-      </Typography>
+      <PageHeader step={t("common.stepOf", { n: 2, total: 4 })} title={t("env.title")} subtitle={t("env.subtitle")} />
 
-      <Typography gutterBottom style={{ fontWeight: 600, color: "#333" }}>
-        Como você quer fornecer as variáveis ambientais?
-      </Typography>
-      <RadioGroup
-        row
-        value={environmentMode}
-        onChange={(e) => setEnvironmentMode(e.target.value)}
-        sx={{ mb: 1, color: "#555"  }}
-      >
-        <FormControlLabel value="sources" control={<Radio />} label="Usar as fontes que fornecemos" />
-        <FormControlLabel value="upload" control={<Radio />} label="Subir minha própria planilha" />
-        <FormControlLabel value="both" control={<Radio />} label="Usar os dois" />
-        <FormControlLabel value="rasters" control={<Radio />} label="Usar rasters (.tif) de uma pasta" />
-      </RadioGroup>
+      <Section title={num() + t("env.modeTitle")}>
+        <OptionCards
+          value={env.mode}
+          onChange={(mode) => set({ mode })}
+          columns={4}
+          options={[
+            { value: "rasters", title: t("env.mode.rasters.title"), description: t("env.mode.rasters.desc"), icon: <LayersIcon /> },
+            { value: "sources", title: t("env.mode.sources.title"), description: t("env.mode.sources.desc"), icon: <SatelliteAltIcon /> },
+            { value: "upload", title: t("env.mode.upload.title"), description: t("env.mode.upload.desc"), icon: <TableChartIcon /> },
+            { value: "both", title: t("env.mode.both.title"), description: t("env.mode.both.desc"), icon: <MergeTypeIcon /> },
+          ]}
+        />
+      </Section>
 
       {usesRasters && (
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="body2" sx={{ color: "#333", mb: 1 }}>
-            Informe a pasta do seu computador com os rasters (.tif). Subpastas também são lidas.
-            Cada arquivo vira uma variável: o valor é lido no pixel de cada ocorrência, e os rasters
-            são reamostrados num grid comum para o background e o mapa.
-          </Typography>
-          <Box sx={{ display: "flex", gap: 1, alignItems: "center", mb: 1 }}>
+        <Section title={num() + t("env.rastersTitle")} subtitle={t("env.rastersSubtitle")}>
+          <RasterPicker raster={env.raster} onChange={(raster) => set({ raster })} />
+        </Section>
+      )}
+
+      {usesGee && (
+        <Section title={num() + t("env.geeTitle")} subtitle={t("env.geeSubtitle")}>
+          <Box sx={{ display: "flex", gap: 1.5, alignItems: "flex-start", flexWrap: "wrap", mb: 2 }}>
             <TextField
-              label="Pasta dos rasters"
               size="small"
-              value={rasterEnv.folder}
-              onChange={(e) => setRasterEnv((prev) => ({ ...prev, folder: e.target.value }))}
-              sx={{ flex: 1, maxWidth: 640 }}
+              label={t("env.gee.project")}
+              value={env.geeProject}
+              onChange={(e) => set({ geeProject: e.target.value })}
+              helperText={gee.error ?? t("env.gee.projectHelp")}
+              error={!!gee.error}
+              sx={{ minWidth: 300 }}
             />
-            <Button
-              variant="contained"
-              onClick={pickRasterFolder}
-              disabled={pickingFolder || rasterScanning}
-              startIcon={pickingFolder ? <CircularProgress size={16} color="inherit" /> : null}
-            >
-              {pickingFolder ? "Aguardando..." : "Escolher pasta..."}
+            <Button variant="outlined" onClick={connectGee} disabled={gee.busy || !env.geeProject.trim()}>
+              {gee.busy ? <CircularProgress size={20} /> : t("env.gee.connect")}
             </Button>
-            <Button
-              variant="outlined"
-              onClick={() => scanRasterFolder()}
-              disabled={!rasterEnv.folder.trim() || rasterScanning}
-              startIcon={rasterScanning ? <CircularProgress size={16} color="inherit" /> : null}
-            >
-              {rasterScanning ? "Lendo..." : "Ler pasta"}
-            </Button>
+            {gee.ok && <Chip color="success" variant="outlined" label={t("env.gee.connected")} sx={{ mt: 0.5 }} />}
           </Box>
-          {rasterErrors.map((e) => (
-            <Alert key={e} severity="warning" sx={{ mb: 1 }}>{e}</Alert>
-          ))}
-          {rasterEnv.available.length > 0 && (
-            <>
-              <FormGroup sx={{ color: "#333", mb: 1 }}>
-                {rasterEnv.available.map((f) => (
-                  <FormControlLabel
-                    key={f.relativePath}
-                    control={
-                      <Checkbox
-                        checked={rasterEnv.files.includes(f.relativePath)}
-                        onChange={(e) => toggleRaster(f.relativePath, e.target.checked)}
-                      />
-                    }
-                    label={
-                      <Typography variant="body2">
-                        <b>{f.variable}</b> ({f.relativePath}, {f.crs ?? "sem CRS"}, {f.sizeMB} MB)
-                      </Typography>
-                    }
-                  />
-                ))}
-              </FormGroup>
-              <TextField
-                label="Resolução do grid (graus)"
-                type="number"
-                size="small"
-                value={rasterEnv.resolution}
-                onChange={(e) =>
-                  setRasterEnv((prev) => ({ ...prev, resolution: Math.max(0.01, parseFloat(e.target.value) || 0.1) }))
-                }
-                inputProps={{ min: 0.01, step: 0.05 }}
-                helperText="Tamanho da célula do grid de background e do mapa (0,1° ≈ 11 km). Valores menores ficam mais lentos."
-                sx={{ width: 300 }}
-              />
-            </>
-          )}
-        </Box>
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+            {GEE_VARS.map((v) => {
+              const on = env.vars.includes(v);
+              return (
+                <Chip
+                  key={v}
+                  label={t(`env.var.${v}`)}
+                  color={on ? "secondary" : "default"}
+                  variant={on ? "filled" : "outlined"}
+                  onClick={() => set({ vars: on ? env.vars.filter((x) => x !== v) : [...env.vars, v] })}
+                />
+              );
+            })}
+          </Box>
+        </Section>
       )}
 
       {usesUpload && (
-        <Box sx={{ mb: 2 }}>
-          <Button variant="outlined" component="label">
-            {envUpload.fileName || "Selecionar planilha de variáveis (CSV)"}
-            <input type="file" accept=".csv,.tsv,.txt" hidden onChange={handleFileSelect} />
+        <Section title={num() + t("env.uploadTitle")} subtitle={t("env.uploadSubtitle")}>
+          <SpreadsheetPicker
+            upload={env.upload}
+            file={files.current.envUpload}
+            fields={[
+              { key: "latitude", label: t("occ.field.latitude"), required: true },
+              { key: "longitude", label: t("occ.field.longitude"), required: true },
+            ]}
+            aliases={ENV_FIELD_ALIASES}
+            onFile={(file, upload) => {
+              files.current.envUpload = file;
+              setEnvUpload({ ...upload, acknowledged: false });
+            }}
+            onMapping={(mapping) => setEnvUpload({ mapping })}
+          >
+            {env.upload.variables.length > 0 && (
+              <Box sx={{ mt: 2.5 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  {t("env.upload.varsTitle")}
+                </Typography>
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                  {env.upload.variables.map((v) => (
+                    <Chip
+                      key={v.column}
+                      label={v.column}
+                      color={v.selected ? "secondary" : "default"}
+                      variant={v.selected ? "filled" : "outlined"}
+                      onClick={() => toggleVar(v.column)}
+                    />
+                  ))}
+                </Box>
+                <FormControlLabel
+                  sx={{ mt: 2, alignItems: "flex-start" }}
+                  control={<Checkbox checked={env.upload.acknowledged} onChange={(e) => set({ upload: { ...env.upload, acknowledged: e.target.checked } })} sx={{ mt: -0.75 }} />}
+                  label={<Typography variant="body2">{t("env.upload.ack")}</Typography>}
+                />
+              </Box>
+            )}
+          </SpreadsheetPicker>
+        </Section>
+      )}
+
+      <Section title={num() + t("env.interTitle")} subtitle={t("env.interSubtitle")}>
+        <Interactions value={env.interactions} onChange={(interactions) => set({ interactions })} />
+      </Section>
+
+      {!phase && (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", my: 3 }}>
+          <Button variant="contained" size="large" startIcon={env.finalData.length ? <RefreshIcon /> : <PlayArrowIcon />} onClick={run} disabled={!!missing}>
+            {env.finalData.length ? t("env.runAgain") : t("env.run")}
           </Button>
-          {envUpload.fileName && (
-            <>
-              <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
-                ✓ {envUpload.fileName} selecionado. Na próxima etapa você vai indicar latitude, longitude e as variáveis.
-              </Typography>
-              <FormControlLabel
-                sx={{ mt: 1, alignItems: "flex-start" }}
-                control={
-                  <Checkbox
-                    checked={!!envUpload.acknowledged}
-                    onChange={(e) =>
-                      setEnvUpload((prev) => ({ ...prev, acknowledged: e.target.checked }))
-                    }
-                    sx={{ pt: 0 }}
-                  />
-                }
-                label={
-                  <Typography variant="body2" sx={{ color: "#333" }}>
-                    Entendo que sou responsável pela qualidade e cobertura dos dados ambientais
-                    enviados, e que problemas nesses dados podem gerar resultados que não refletem
-                    a realidade.
-                  </Typography>
-                }
-              />
-            </>
+          {missing && (
+            <Typography variant="body2" sx={{ color: "text.secondary" }}>
+              {missing}
+            </Typography>
           )}
         </Box>
       )}
-
-      {usesSources && (
-      <>
-      {/* Selecionar todas */}
-      <FormControlLabel
-        sx={{ mb: 0.5 }}
-        control={
-          <Checkbox
-            checked={allSelected}
-            indeterminate={someSelected}
-            onChange={(e) => handleSelectAll(e.target.checked)}
-          />
-        }
-        label={
-          <Typography variant="body2" sx={{ fontWeight: 600, color: "#333" }}>
-            Selecionar todas
-          </Typography>
-        }
-      />
-
-      <FormGroup style={{ color: "#333" }}>
-        {ENV_VARS.map(({ name, label }) => (
-          <FormControlLabel
-            key={name}
-            control={
-              <Checkbox
-                name={name}
-                checked={selectedEnv.includes(name)}
-                onChange={handleChange}
-              />
-            }
-            label={label}
-          />
-        ))}
-      </FormGroup>
-
-      {needsEE && !authenticated && (
-        <Box sx={{ mt: 3, p: 2, border: "1px solid #ccc", borderRadius: 2 }}>
-          <Typography variant="subtitle1" fontWeight={600} gutterBottom color="#333">
-            Autenticação no Google Earth Engine
-          </Typography>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            NDVI, NDWI, Temperatura e Precipitação requerem acesso ao Google Earth Engine (GEE).
-          </Alert>
-
-          <Typography variant="body2" sx={{ color: "#333", mb: 1 }}>
-            1. Acesse{" "}
-            <a href="https://earthengine.google.com/" target="_blank" rel="noreferrer">
-              earthengine.google.com
-            </a>{" "}
-            e registre-se.
-          </Typography>
-          <Typography variant="body2" sx={{ color: "#333", mb: 1 }}>
-            2. Informe o nome do projeto GEE vinculado à sua conta.
-          </Typography>
-
-          <TextField
-            label="Nome do Projeto GEE"
-            variant="outlined"
-            size="small"
-            value={geeProject}
-            onChange={handleProjectChange}
-            placeholder="ex: my-gee-project"
-            disabled={authLoading}
-            error={!!authError}
-            helperText={authError ?? ""}
-            sx={{ mb: 2, width: "40ch", display: "block" }}
-          />
-
-          <Typography variant="body2" sx={{ color: "#333", mb: 1 }}>
-            3. Clique abaixo para autenticar — uma janela do navegador será aberta.
-          </Typography>
-          <Typography variant="body2" sx={{ color: "#333", mb: 2 }}>
-            4. Copie o token gerado e cole quando solicitado.
-          </Typography>
-
-          <Button
-            variant="contained"
-            color="primary"
-            disabled={!geeProject.trim() || authLoading}
-            onClick={() => authenticate(geeProject.trim())}
-            startIcon={authLoading ? <CircularProgress size={16} color="inherit" /> : null}
-          >
-            {authLoading ? "Autenticando..." : "Autenticar no Earth Engine"}
-          </Button>
-        </Box>
-      )}
-
-      {needsEE && authenticated && (
-        <Alert severity="success" sx={{ mt: 2 }}>
-          ✓ Google Earth Engine autenticado com sucesso.
+      {phase && <ProgressPanel title={t(`env.phase.${phase}`)} messages={t(`env.progress.${phase}`)} />}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
         </Alert>
       )}
-      </>
+
+      {!phase && env.finalData.length > 0 && (
+        <Section title={t("env.resultTitle")} sx={{ borderColor: envStale ? "warning.main" : undefined }}>
+          {envStale && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {t("env.stale")}
+            </Alert>
+          )}
+          <Box sx={{ display: "flex", gap: 4, flexWrap: "wrap", mb: 2 }}>
+            <Stat value={env.variables.length} label={t("env.stat.vars")} />
+            <Stat value={new Intl.NumberFormat(lang === "pt" ? "pt-BR" : "en-US").format(env.finalData.length)} label={t("env.stat.rows")} />
+            {env.rasterGrid && (
+              <Stat value={new Intl.NumberFormat(lang === "pt" ? "pt-BR" : "en-US").format(env.rasterGrid.rows)} label={t("env.stat.grid", { res: env.rasterGrid.resolution })} />
+            )}
+            {env.interactionData.length > 0 && <Stat value={env.interactionData.length} label={t("env.stat.interactions")} />}
+          </Box>
+          {env.variables.length === 0 && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {t("env.noVars")}
+            </Alert>
+          )}
+          {badVars.length > 0 && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {t("env.badVars", { list: badVars.map((v) => v.name).join(", ") })}
+            </Alert>
+          )}
+          {stats.length > 0 && (
+            <Box sx={{ maxHeight: 360, overflow: "auto" }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>{t("env.table.variable")}</TableCell>
+                    <TableCell align="right">{t("env.table.min")}</TableCell>
+                    <TableCell align="right">{t("env.table.max")}</TableCell>
+                    <TableCell align="right">{t("env.table.missing")}</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {stats.map((s) => (
+                    <TableRow key={s.name}>
+                      <TableCell sx={{ fontFamily: "monospace", fontSize: 13 }}>{s.name}</TableCell>
+                      <TableCell align="right">{s.min == null ? "–" : nf.format(s.min)}</TableCell>
+                      <TableCell align="right">{s.max == null ? "–" : nf.format(s.max)}</TableCell>
+                      <TableCell align="right" sx={{ color: s.missingPct >= 50 ? "error.main" : s.missingPct > 0 ? "warning.dark" : undefined }}>
+                        {s.missing ? `${s.missing} (${s.missingPct.toFixed(0)}%)` : "0"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+          <DataTable rows={env.finalData} filename="ecolab-dados-ambientais.csv" label={t("env.showAll")} />
+          {env.interactionData.length > 0 && (
+            <DataTable rows={env.interactionData} filename="ecolab-interacoes.csv" label={t("env.showInteractions")} />
+          )}
+        </Section>
       )}
 
-      <StepActions
-        selectedSpecies={selectedSpecies}
-        disableNext={!canProceed}
-        disableHint={
-          !rastersReady
-            ? "Leia a pasta e selecione ao menos um raster."
-            : !uploadReady
-            ? !envUpload.file
-              ? "Selecione uma planilha com as variáveis ambientais para prosseguir."
-              : "Marque a confirmação de responsabilidade pelos dados para prosseguir."
-            : !hasSelection
-            ? "Selecione ao menos uma variável ambiental."
-            : "Autentique no Google Earth Engine para prosseguir."
-        }
-        nextOverride={usesUpload ? "/environment-mapping" : undefined}
+      <StepFooter
+        onBack={() => navigate("/occurrences")}
+        onNext={() => navigate("/models")}
+        nextDisabled={!envReady || env.variables.length === 0}
+        reason={envStale ? t("env.reason.stale") : t("env.reason.run")}
       />
     </Box>
   );

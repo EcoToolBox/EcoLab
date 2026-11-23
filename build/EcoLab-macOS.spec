@@ -110,6 +110,11 @@ datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 tmp = collect_all('pyogrio')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
 
+# ── GeoTIFF (tifffile, Python puro; LZW decodificado pela libtiff do Pillow) ──
+tmp = collect_all('tifffile')
+datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]
+hiddenimports += ['PIL.Image', 'PIL.TiffImagePlugin', 'PIL.TiffTags', 'ecoLab.backend.services.geotiff']
+
 # ── geopandas ─────────────────────────────────────────────────────────────────
 tmp = collect_all('geopandas')
 datas += tmp[0]; binaries += tmp[1]; hiddenimports += tmp[2]

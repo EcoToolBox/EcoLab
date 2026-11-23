@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ValidationError
-from .services import get_observations, get_environment, get_interactions, get_models, get_uploads, prediction_grid, raster_env, system_dialogs
+from .services import get_observations, get_environment, get_interactions, get_models, get_uploads, prediction_grid, raster_env, system_dialogs, world
 from .services.Models import create_grid
 
 # Carrega backend/.env (credenciais padrão como ECOLAB_GBIF_*, nunca commitadas
@@ -37,6 +37,20 @@ import os
 @app.get("/api/config")
 def get_config():
     return {"port": int(os.environ.get("APP_PORT", 8000))}
+
+
+# Países (lista e contorno) vêm de um arquivo embutido: funcionam sem internet.
+@app.get("/api/countries")
+def get_countries():
+    return {"msg": world.list_countries()}
+
+
+@app.get("/api/countries/{country}/geometry")
+def get_country_geometry(country: str):
+    geo = world.country_geojson(country)
+    if geo is None:
+        raise HTTPException(404, f"País não encontrado: {country}")
+    return {"msg": geo}
 
 
 app.add_middleware(
