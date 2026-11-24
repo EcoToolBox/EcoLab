@@ -35,7 +35,12 @@ for ((i = 0; i < TIMEOUT; i += 2)); do
     echo "✅ EcoLab subiu em ${i}s: API e frontend OK."
     # leitura de GeoTIFF (tifffile + LZW do Pillow) funciona dentro do executável?
     RASTERS="$DATA/rasters"; mkdir -p "$RASTERS"
-    cp "$(dirname "$0")/fixtures/smoke_bio_1.tif" "$RASTERS/"
+    FIXTURE="$(dirname "$0")/fixtures/smoke_bio_1.tif"
+    if [ ! -f "$FIXTURE" ]; then
+      echo "::error::Raster de teste não encontrado: $FIXTURE (está no .gitignore ou não foi commitado?)"
+      exit 1
+    fi
+    cp "$FIXTURE" "$RASTERS/"
     RASTERS_FOR_APP="$RASTERS"
     command -v cygpath >/dev/null 2>&1 && RASTERS_FOR_APP="$(cygpath -w "$RASTERS")"
     body="$(python3 -c 'import json,sys; print(json.dumps({"folder": sys.argv[1]}))' "$RASTERS_FOR_APP" 2>/dev/null \

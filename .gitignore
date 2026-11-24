@@ -222,5 +222,3 @@ installer_output/
 build/EcoLab.icns
 EcoLab-*.deb
 EcoLab-*.dmg
-scripts/ci/smoke-test.sh
-scripts/ci/fixtures/smoke_bio_1.tif
