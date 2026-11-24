@@ -38,6 +38,8 @@ jobs:
       channel: ${{ steps.v.outputs.channel }}
     steps:
       - uses: actions/checkout@v4
+      - name: Checa sintaxe do backend (falha em segundos, não depois do build)
+        run: python3 -m compileall -q ecoLab/backend scripts/run_exe.py
       - id: v
         run: |
           base="$(tr -d '[:space:]' < VERSION)"
@@ -165,7 +167,7 @@ jobs:
   macos:
     name: macOS
     needs: [version, frontend]
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

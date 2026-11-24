@@ -38,7 +38,7 @@ def variable_name(path: str) -> str:
 
 
 def _check_folder(folder: str) -> str:
-    folder = os.path.abspath(os.path.expanduser(str(folder or "").strip().strip('"')))c
+    folder = os.path.abspath(os.path.expanduser(str(folder or "").strip().strip('"')))
     if not os.path.isdir(folder):
         raise ValueError(f"Pasta não encontrada: {folder}")
     return folder
